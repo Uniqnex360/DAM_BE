@@ -2,8 +2,6 @@
 FROM python:3.10-slim
 
 # Set environment variables
-# PYTHONDONTWRITEBYTECODE: Prevents Python from writing pyc files to disc
-# PYTHONUNBUFFERED: Prevents Python from buffering stdout and stderr
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1
 
@@ -29,5 +27,6 @@ RUN mkdir -p static/uploads static/processed
 # Expose the port FastAPI runs on
 EXPOSE 8000
 
-# Command to run the application with fallback to port 8000
-CMD ["./start.sh"]
+# Use ENTRYPOINT with shell to properly expand PORT variable
+ENTRYPOINT ["/bin/sh", "-c"]
+CMD ["uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8000}"]
