@@ -30,4 +30,4 @@ RUN mkdir -p static/uploads static/processed
 EXPOSE 8000
 
 # Command to run the application with fallback to port 8000
-CMD uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8000}
+CMD ["./start.sh"]
