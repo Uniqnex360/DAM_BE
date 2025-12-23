@@ -1,0 +1,8 @@
+__pycache__
+venv/
+.git
+.env
+static/uploads/*
+static/processed/*
+test_images/*
+test_results/*
