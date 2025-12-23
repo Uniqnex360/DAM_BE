@@ -3,30 +3,36 @@ FROM python:3.10-slim
 
 # Set environment variables
 ENV PYTHONDONTWRITEBYTECODE=1 \
-    PYTHONUNBUFFERED=1
+    PYTHONUNBUFFERED=1 \
+    # Default port if Render doesn't set one
+    PORT=10000
 
 # Set the working directory in the container
 WORKDIR /app
 
-# Install system dependencies required for OpenCV (cv2) and Rembg
+# 1. Install system dependencies
+# Added 'curl' so we can download the AI model manually
 RUN apt-get update && apt-get install -y \
     libgl1 \
     libglib2.0-0 \
+    curl \
     && rm -rf /var/lib/apt/lists/*
 
-# Install Python dependencies
+# 2. CRITICAL FIX: Pre-download the U2Net AI Model
+# This prevents the app from downloading 176MB on startup (which causes timeouts)
+RUN mkdir -p /root/.u2net \
+    && curl -L https://github.com/danielgatis/rembg/releases/download/v0.0.0/u2net.onnx -o /root/.u2net/u2net.onnx
+
+# 3. Install Python dependencies
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Copy the application code
+# 4. Copy the application code
 COPY . .
 
-# Create directory for static files so permission errors don't occur
+# 5. Create directory for static files so permission errors don't occur
 RUN mkdir -p static/uploads static/processed
 
-# Expose the port FastAPI runs on
-EXPOSE 8000
-
-# Use ENTRYPOINT with shell to properly expand PORT variable
-ENTRYPOINT ["/bin/sh", "-c"]
-CMD ["uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8000}"]
+# 6. Command to run the application
+# We use shell format here so ${PORT} is expanded correctly
+CMD uvicorn app.main:app --host 0.0.0.0 --port ${PORT}
