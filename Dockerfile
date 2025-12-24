@@ -10,16 +10,13 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 WORKDIR /app
 
 # 1. Install System Dependencies
-# Added 'curl' so we can download the model manually
 RUN apt-get update && apt-get install -y \
     libgl1 \
     libglib2.0-0 \
     curl \
     && rm -rf /var/lib/apt/lists/*
 
-# 2. CRITICAL FIX: Pre-download the U2Net AI Model
-# We manually download it to the location where 'rembg' looks for it (/root/.u2net)
-# This happens during BUILD, so it's cached in the image forever.
+# 2. Pre-download the U2Net AI Model
 RUN mkdir -p /root/.u2net \
     && curl -L https://github.com/danielgatis/rembg/releases/download/v0.0.0/u2net.onnx -o /root/.u2net/u2net.onnx
 
@@ -33,5 +30,6 @@ COPY . .
 # 5. Create directory for static files
 RUN mkdir -p static/uploads static/processed
 
-# 6. Start Command (Run Migrations then Start Server)
-CMD sh -c "alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port ${PORT}"
+# 6. Start Command (The Fix)
+# We modify DATABASE_URL on the fly to support AsyncPG
+CMD sh -c "export DATABASE_URL=\$(echo \$DATABASE_URL | sed 's/postgres:\/\//postgresql+asyncpg:\/\//') && alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port \${PORT}"
