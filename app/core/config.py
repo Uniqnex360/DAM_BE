@@ -11,7 +11,7 @@ class Settings(BaseSettings):
     POSTGRES_USER: str = "postgres"
     POSTGRES_PASSWORD: str = "password"
     POSTGRES_DB: str = "dam_db"
-    DATABASE_URL: str = "postgresql+asyncpg://postgres:password@localhost:5432/dam_db"
+    DATABASE_URL: str = ""
 
     SECRET_KEY: str = "unsafe_default_key_change_in_env"
     ALGORITHM: str = "HS256"
