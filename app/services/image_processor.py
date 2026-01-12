@@ -7,26 +7,64 @@ import time
 import logging
 from typing import Tuple, Dict, List
 
-# Configure Logging
 logger = logging.getLogger(__name__)
 
-# ==========================================
-# CONSTANTS
-# ==========================================
 TARGET_SIZE = (2000, 2000)
 
-# CHANGE THIS: Lower it to 0.1 temporarily to FORCE changes for testing
 # Original was 0.6
 CONFIDENCE_THRESHOLD = 0.6 
 
 class ImageProcessor:
-    def __init__(self, file_bytes: bytes):
+    def __init__(self, file_bytes: bytes, resize_dims: dict = None, operations: list = None, autoDetect: bool = False):
         nparr = np.frombuffer(file_bytes, np.uint8)
         self.img = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
         if self.img is None:
             raise ValueError("Could not decode image bytes")
         self.original_h, self.original_w = self.img.shape[:2]
+        self.resize_dims = resize_dims
+        self.operations = operations or []  
+        self.auto_detect = autoDetect
+        logger.info(f"ImageProcessor initialized: dims={self.original_w}x{self.original_h}, "
+                   f"resize_dims={self.resize_dims}, operations={self.operations}")
+        
+    def resize_ecom(self):
+        h, w = self.img.shape[:2]
+        print(f"✅ resize_ecom called: current size={w}x{h}, resize_dims={self.resize_dims}")
+        
+        if not self.resize_dims:
+            print("❌ resize_ecom: No resize_dims provided, returning")
+            return
+        
+        # Get target dimensions - don't use 'or' with dict.get()
+        target_w = self.resize_dims.get("width")
+        target_h = self.resize_dims.get("height")
+        print(f"🔍 DEBUG: target_w={target_w}, target_h={target_h}")
+        if not target_w or not target_h:
+            print(f"❌ resize_ecom: Invalid dimensions width={target_w}, height={target_h}")
+            return
+        
+        print(f"✅ resize_ecom: Resizing to {target_w}x{target_h}")
+        
+        # Calculate scale to fit within target size
+        scale = min(target_w / w, target_h / h)
+        new_w, new_h = int(w * scale), int(h * scale)
+        
+        print(f"✅ resize_ecom: Scaled size will be {new_w}x{new_h}")
 
+        # Resize using PIL
+        pil = Image.fromarray(cv2.cvtColor(self.img, cv2.COLOR_BGR2RGB))
+        pil = pil.resize((new_w, new_h), Image.LANCZOS)
+
+        # Create canvas and center image
+        canvas = Image.new("RGB", (target_w, target_h), (255, 255, 255))
+        offset = ((target_w - new_w) // 2, (target_h - new_h) // 2)
+        canvas.paste(pil, offset)
+
+        # Convert back to OpenCV format
+        self.img = cv2.cvtColor(np.array(canvas), cv2.COLOR_RGB2BGR)
+        
+        final_h, final_w = self.img.shape[:2]
+        print(f"✅ resize_ecom: Final size={final_w}x{final_h}")
     def _foreground_mask(self, img) -> np.ndarray:
         """Exact logic from your script: Get binary mask."""
         gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
@@ -35,22 +73,32 @@ class ImageProcessor:
         return cv2.morphologyEx(mask, cv2.MORPH_CLOSE, np.ones((9, 9), np.uint8))
 
     def analyze(self) -> Dict[str, float]:
-        """Exact logic from your script: Generate scores."""
         h, w = self.img.shape[:2]
+        print(f"✅ analyze: Image size={w}x{h}, resize_dims={self.resize_dims}")
         gray = cv2.cvtColor(self.img, cv2.COLOR_BGR2GRAY)
         hsv = cv2.cvtColor(self.img, cv2.COLOR_BGR2HSV)
         
         fg = self._foreground_mask(self.img)
         fg_ratio = np.sum(fg > 0) / (h * w)
-
+        
+        # Initialize conf dictionary FIRST
         conf = {
             "bg_clean": 0.0, "shadow": 0.0, "crop": 0.0, 
             "watermark": 0.0, "resize": 0.0
         }
 
-        # 1. Resize Confidence (If image is small, we MUST resize)
-        if min(h, w) < 2000: 
-            conf["resize"] = 1.0
+        # 1. Resize Confidence - Only resize if custom dimensions are provided
+        if self.resize_dims:
+            target_w = self.resize_dims.get("width")
+            target_h = self.resize_dims.get("height")
+            # Only resize if dimensions are different from current
+            if target_w and target_h and (w != target_w or h != target_h):
+                conf["resize"] = 1.0
+            else:
+                conf["resize"] = 0.0  # Skip resize - already correct size
+        else:
+            # If no custom dimensions provided, don't resize - keep original
+            conf["resize"] = 0.0
 
         # 2. Crop Confidence (If foreground is tiny)
         if fg_ratio < 0.35: 
@@ -61,7 +109,6 @@ class ImageProcessor:
             np.std(gray[:80, :80]), np.std(gray[:80, -80:]),
             np.std(gray[-80:, :80]), np.std(gray[-80:, -80:])
         ])
-        # Your logic: (std - 10) / 20. If std > 30, score is 1.0 (Dirty).
         conf["bg_clean"] = np.clip((corner_std - 10) / 20, 0, 1)
 
         # 4. Shadow Confidence (High Score = Has Shadows)
@@ -79,12 +126,9 @@ class ImageProcessor:
             if cw > w * 0.25 and ch < h * 0.12:
                 conf["watermark"] = 0.85
                 break
-
+        print(f"✅ analyze: Confidence scores = {conf}")
         return conf
 
-    # ----------------------------------------
-    # ENHANCEMENT METHODS
-    # ----------------------------------------
     def clean_background(self):
         try:
             img_rgb = cv2.cvtColor(self.img, cv2.COLOR_BGR2RGB)
@@ -154,54 +198,123 @@ class ImageProcessor:
 
         self.img = self.img[y1:y2, x1:x2]
 
-    def resize_ecom(self):
-        h, w = self.img.shape[:2]
-        scale = min(TARGET_SIZE[0] / w, TARGET_SIZE[1] / h)
-        new_w, new_h = int(w * scale), int(h * scale)
+    # def analyze(self) -> Dict[str, float]:
+    #     h, w = self.img.shape[:2]
+    #     gray = cv2.cvtColor(self.img, cv2.COLOR_BGR2GRAY)
+    #     hsv = cv2.cvtColor(self.img, cv2.COLOR_BGR2HSV)
+        
+    #     fg = self._foreground_mask(self.img)
+    #     fg_ratio = np.sum(fg > 0) / (h * w)
+        
+    #     # Initialize conf dictionary FIRST
+    #     conf = {
+    #         "bg_clean": 0.0, "shadow": 0.0, "crop": 0.0, 
+    #         "watermark": 0.0, "resize": 0.0
+    #     }
 
-        pil = Image.fromarray(cv2.cvtColor(self.img, cv2.COLOR_BGR2RGB))
-        pil = pil.resize((new_w, new_h), Image.LANCZOS)
+    #     # 1. Resize Confidence - Only resize if custom dimensions are provided
+    #     if self.resize_dims:
+    #         target_w = self.resize_dims.get("width")
+    #         target_h = self.resize_dims.get("height")
+    #         # Only resize if dimensions are different from current
+    #         if target_w and target_h and (w != target_w or h != target_h):
+    #             conf["resize"] = 1.0
+    #         else:
+    #             conf["resize"] = 0.0  # Skip resize - already correct size
+    #     else:
+    #         # If no custom dimensions provided, don't resize - keep original
+    #         conf["resize"] = 0.0
 
-        canvas = Image.new("RGB", TARGET_SIZE, (255, 255, 255))
-        offset = ((TARGET_SIZE[0] - new_w) // 2, (TARGET_SIZE[1] - new_h) // 2)
-        canvas.paste(pil, offset)
+    #     # 2. Crop Confidence (If foreground is tiny)
+    #     if fg_ratio < 0.35: 
+    #         conf["crop"] = min(1.0, (0.5 - fg_ratio) * 3)
 
-        self.img = cv2.cvtColor(np.array(canvas), cv2.COLOR_RGB2BGR)
+    #     # 3. Background Cleanliness (High Score = DIRTY background)
+    #     corner_std = np.mean([
+    #         np.std(gray[:80, :80]), np.std(gray[:80, -80:]),
+    #         np.std(gray[-80:, :80]), np.std(gray[-80:, -80:])
+    #     ])
+    #     conf["bg_clean"] = np.clip((corner_std - 10) / 20, 0, 1)
+
+    #     # 4. Shadow Confidence (High Score = Has Shadows)
+    #     v = hsv[:, :, 2]
+    #     mean_v = np.mean(v) if np.mean(v) > 0 else 1
+    #     shadow_mask = (v < 0.35 * mean_v) & (fg > 0)
+    #     shadow_ratio = np.sum(shadow_mask) / (h * w)
+    #     conf["shadow"] = np.clip(shadow_ratio * 40, 0, 1)
+
+    #     # 5. Watermark Confidence
+    #     _, th = cv2.threshold(gray, 230, 255, cv2.THRESH_BINARY_INV)
+    #     cnts, _ = cv2.findContours(th, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    #     for c in cnts:
+    #         x, y, cw, ch = cv2.boundingRect(c)
+    #         if cw > w * 0.25 and ch < h * 0.12:
+    #             conf["watermark"] = 0.85
+    #             break
+
+    #     return conf
 
     def process(self) -> Tuple[bytes, Dict, List[str], int]:
         start_time = time.time()
         steps_applied = []
-        
-        # 1. Analyze
+        print(f"✅ process() called: auto_detect={self.auto_detect}, operations={self.operations}")
+    
+        # Always analyze for telemetry
         confidence = self.analyze()
-
-        # 2. Apply Logic (Exact match to your script)
-        # Note: Order matters. Usually Shadow/Watermark -> Crop -> BG -> Resize
         
-        if confidence["shadow"] >= CONFIDENCE_THRESHOLD:
-            self.remove_shadow()
-            steps_applied.append("shadow_fix")
-
-        if confidence["watermark"] >= CONFIDENCE_THRESHOLD:
-            self.remove_watermark()
-            steps_applied.append("watermark_removal")
-
-        if confidence["crop"] >= CONFIDENCE_THRESHOLD:
-            self.smart_crop()
-            steps_applied.append("smart_crop")
-
-        # Logic Fix: If score is high (DIRTY), we clean it.
-        if confidence["bg_clean"] >= CONFIDENCE_THRESHOLD:
-            self.clean_background()
-            steps_applied.append("bg_removal")
-
-        if confidence["resize"] >= CONFIDENCE_THRESHOLD:
-            self.resize_ecom()
-            steps_applied.append("resize")
-
-        # 3. Finalize
+        if self.auto_detect:
+            # AUTO-DETECT MODE: Apply all fixes based on confidence
+            logger.info("Auto-detect mode activated")
+            
+            if confidence["shadow"] >= CONFIDENCE_THRESHOLD:
+                self.remove_shadow()
+                steps_applied.append("shadow_fix")
+                
+            if confidence["watermark"] >= CONFIDENCE_THRESHOLD:
+                self.remove_watermark()
+                steps_applied.append("watermark_removal")
+                
+            if confidence["crop"] >= CONFIDENCE_THRESHOLD:
+                self.smart_crop()
+                steps_applied.append("smart_crop")
+                
+            if confidence["bg_clean"] >= CONFIDENCE_THRESHOLD:
+                self.clean_background()
+                steps_applied.append("bg_removal")
+                
+            if confidence["resize"] >= CONFIDENCE_THRESHOLD:
+                self.resize_ecom()
+                steps_applied.append("resize")
+        else:
+            # USER-SELECTION MODE: Only apply user-selected operations
+            logger.info(f"User-selection mode: {self.operations}")
+            
+            if "shadow_fix" in self.operations or "shadow" in self.operations:
+                self.remove_shadow()
+                steps_applied.append("shadow_fix")
+                
+            if "watermark_removal" in self.operations or "watermark" in self.operations:
+                self.remove_watermark()
+                steps_applied.append("watermark_removal")
+                
+            if "smart_crop" in self.operations or "crop" in self.operations:
+                self.smart_crop()
+                steps_applied.append("smart_crop")
+                
+            if "bg-remove" in self.operations or "bg_removal" in self.operations:
+                self.clean_background()
+                steps_applied.append("bg_removal")
+                
+            if "resize" in self.operations:
+                if self.resize_dims:
+                    self.resize_ecom()
+                    steps_applied.append("resize")
+                else:
+                    logger.warning("Resize requested but no dimensions provided")
+        print(f"✅ process() complete: steps_applied={steps_applied}")
+        # Finalize and return
         end_time = time.time()
         duration_ms = int((end_time - start_time) * 1000)
-
+        
         success, encoded_img = cv2.imencode(".jpg", self.img, [cv2.IMWRITE_JPEG_QUALITY, 95])
         return encoded_img.tobytes(), confidence, steps_applied, duration_ms
