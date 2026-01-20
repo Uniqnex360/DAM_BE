@@ -1,11 +1,11 @@
 import cv2
 import numpy as np
 from PIL import Image
-from rembg import remove
 import io
 import time
 import logging
 from typing import Tuple, Dict, List
+from transparent_background import Remover
 
 logger = logging.getLogger(__name__)
 
@@ -13,7 +13,15 @@ TARGET_SIZE = (2000, 2000)
 
 # Original was 0.6
 CONFIDENCE_THRESHOLD = 0.6
-
+_remover=None
+ 
+def get_remover():
+    global _remover
+    if _remover is None:
+        logger.info("Initializing background remover...")
+        _remover=Remover()
+        logger.info('Background remover ready!')
+    return _remover
 
 class ImageProcessor:
     def __init__(self, file_bytes: bytes, resize_dims: dict = None, operations: list = None, autoDetect: bool = False):
@@ -131,21 +139,36 @@ class ImageProcessor:
         print(f"✅ analyze: Confidence scores = {conf}")
         return conf
 
+    # def clean_background(self):
+    #     try:
+    #         img_rgb = cv2.cvtColor(self.img, cv2.COLOR_BGR2RGB)
+    #         pil_img = Image.fromarray(img_rgb)
+    #         out = remove(pil_img)
+
+    #         bg = Image.new("RGB", out.size, (255, 255, 255))
+    #         if out.mode == "RGBA":
+    #             bg.paste(out, mask=out.split()[3])
+    #         else:
+    #             bg.paste(out)
+    #         self.img = cv2.cvtColor(np.array(bg), cv2.COLOR_RGB2BGR)
+    #     except Exception as e:
+    #         logger.error(f"BG Removal failed: {e}")
     def clean_background(self):
         try:
-            img_rgb = cv2.cvtColor(self.img, cv2.COLOR_BGR2RGB)
-            pil_img = Image.fromarray(img_rgb)
-            out = remove(pil_img)
-
+            img_rgb=cv2.cvtColor(self.img,cv2.COLOR_BGR2RGB)
+            pil_img=Image.fromarray(img_rgb)
+            remover=get_remover()
+            out=remover.process(pil_img)
             bg = Image.new("RGB", out.size, (255, 255, 255))
-            if out.mode == "RGBA":
-                bg.paste(out, mask=out.split()[3])
+            if out.mode=='RGBA':
+                bg.paste(out,mask=out.split()[3])
             else:
                 bg.paste(out)
-            self.img = cv2.cvtColor(np.array(bg), cv2.COLOR_RGB2BGR)
+            self.img=cv2.cvtColor(np.array(bg),cv2.COLOR_RGB2BGR)
+            logger.info('Background removal successful')
         except Exception as e:
-            logger.error(f"BG Removal failed: {e}")
-
+            logger.error(f"BG removal failed: {e}")
+            raise e
     def remove_shadow(self):
         hsv = cv2.cvtColor(self.img, cv2.COLOR_BGR2HSV)
         v = hsv[:, :, 2]
