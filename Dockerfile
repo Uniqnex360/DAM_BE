@@ -22,6 +22,14 @@ RUN mkdir -p /root/.u2net \
 
 # 3. Install Python dependencies
 COPY requirements.txt .
+ENV CUDA_VISIBLE_DEVICES=""
+ENV FORCE_CPU=1
+
+# Install PyTorch CPU version FIRST
+RUN pip install --no-cache-dir \
+    torch==2.9.1+cpu \
+    torchvision==0.24.1+cpu \
+    -f https://download.pytorch.org/whl/cpu
 RUN pip install --no-cache-dir -r requirements.txt
 
 # 4. Copy the application code
