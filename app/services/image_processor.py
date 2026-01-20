@@ -19,7 +19,7 @@ def get_remover():
     global _remover
     if _remover is None:
         logger.info("Initializing background remover...")
-        _remover=Remover()
+        _remover=Remover(mode="fast")
         logger.info('Background remover ready!')
     return _remover
 
