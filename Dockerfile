@@ -22,13 +22,12 @@ RUN mkdir -p /root/.u2net \
 
 # 3. Install Python dependencies
 COPY requirements.txt .
-RUN pip install --no-cache-dir typing-extensions==4.12.2
+RUN pip install --no-cache-dir typing-extensions==4.12.2 jinja2==3.1.3
 
-# Then install PyTorch
 RUN pip install --no-cache-dir \
     torch==2.9.1 \
     torchvision==0.24.1 \
-    --index-url https://download.pytorch.org/whl/cpu
+    --extra-index-url https://download.pytorch.org/whl/cpu
 RUN pip install --no-cache-dir -r requirements.txt
 
 # 4. Copy the application code
