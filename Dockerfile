@@ -38,4 +38,9 @@ RUN mkdir -p static/uploads static/processed
 
 # 6. Start Command (The Fix)
 # We modify DATABASE_URL on the fly to support AsyncPG
-CMD sh -c "export DATABASE_URL=\$(echo \$DATABASE_URL | sed 's/postgres:\/\//postgresql+asyncpg:\/\//') && alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port \${PORT}"
+CMD sh -c "alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port ${PORT} --workers 1"
+
+
+
+
+

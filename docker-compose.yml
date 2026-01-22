@@ -1,18 +1,15 @@
 services:
-  # 1. The FastAPI Backend
   backend:
     build: .
-    container_name: dam_backend
+    container_name: analyzer_api
     ports:
-     - "8000:10000"
+     - "8001:10000"
     volumes:
-      - .:/app  # Hot reload: Changes in your code update the container immediately
-      - ~/.u2net:/root/.u2net # Share the AI model you downloaded locally
+      - .:/app  
+      # - ~/.u2net:/root/.u2net 
     environment:
-      # Override localhost with service names
-      - POSTGRES_SERVER=db
-      - REDIS_HOST=redis
-      # Pass through other secrets from your .env file
+      - POSTGRES_SERVER=analyzer_db
+      - REDIS_HOST=analyzer_redis
       - PROJECT_NAME=${PROJECT_NAME}
       - API_V1_STR=${API_V1_STR}
       - POSTGRES_USER=${POSTGRES_USER}
@@ -28,11 +25,10 @@ services:
       - CLOUDINARY_API_SECRET=${CLOUDINARY_API_SECRET}
       - CLOUDINARY_UPLOAD_PRESET=${CLOUDINARY_UPLOAD_PRESET}
     depends_on:
-      - db
-      - redis
+      - analyzer_db
+      - analyzer_redis
 
-  # 2. PostgreSQL Database
-  db:
+  analyzer_db:
     image: postgres:15-alpine
     restart: always
     environment:
@@ -40,16 +36,16 @@ services:
       - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
       - POSTGRES_DB=${POSTGRES_DB}
     ports:
-      - "5433:5432"
+      - "5435:5432"
     volumes:
-      - postgres_data:/var/lib/postgresql/data
+      - analyzer_data:/var/lib/postgresql/data
 
-  # 3. Redis Queue
-  redis:
+  analyzer_redis:
     image: redis:7-alpine
+    container_name: analyzer_redis
     restart: always
     ports:
-      - "6379:6379"
+      - "6380:6379" 
 
 volumes:
-  postgres_data:
+  analyzer_data: 
