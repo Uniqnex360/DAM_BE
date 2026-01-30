@@ -17,6 +17,8 @@ from app.schemas.asset import ImageResponse
 from app.schemas.analysis import AnalyzeRequest, AnalyzeResponse
 from app.core.config import settings
 router = APIRouter()
+
+
 @router.post("/analyze")
 async def analyze_endpoint(request: AnalyzeRequest):
     try:
@@ -25,6 +27,8 @@ async def analyze_endpoint(request: AnalyzeRequest):
     except Exception as e:
         print(f"Analysis Error: {e}")
         raise HTTPException(status_code=400, detail=str(e))
+
+
 @router.post("/upload", response_model=ImageResponse)
 async def upload_asset(
     file: UploadFile = File(...),
@@ -59,13 +63,14 @@ async def upload_asset(
     except Exception as e:
         await db.rollback()
         raise HTTPException(status_code=500, detail=f"Upload failed: {str(e)}")
-    
+
+
 @router.post("/{image_id}/process")
 async def process_image_asset(
     image_id: str,
     operations: list = Body(default=[], embed=True),
-    options: dict = Body(default={}, embed=True), 
-    autoDetect: bool = Body(default=False, embed=True),   
+    options: dict = Body(default={}, embed=True),
+    autoDetect: bool = Body(default=False, embed=True),
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(deps.get_current_user)
 ):
@@ -74,7 +79,8 @@ async def process_image_asset(
     print(f"DEBUG: options type={type(options)}")
     result = await db.execute(select(Image).where(Image.id == image_id))
     img_record = result.scalars().first()
-    if not img_record: raise HTTPException(status_code=404, detail="Image not found")
+    if not img_record:
+        raise HTTPException(status_code=404, detail="Image not found")
     img_record.processing_status = "processing"
     await db.commit()
     try:
@@ -83,11 +89,13 @@ async def process_image_asset(
             filename = img_record.url.split("/")[-1]
             local_path = f"static/uploads/{filename}"
             if os.path.exists(local_path):
-                with open(local_path, "rb") as f: image_content = f.read()
+                with open(local_path, "rb") as f:
+                    image_content = f.read()
         if not image_content:
             image_content = await run_in_threadpool(lambda: requests.get(img_record.url).content)
         resize_dims = options.get("resize") if options.get("resize") else None
-        processor = ImageProcessor(image_content, resize_dims=resize_dims,operations=operations,autoDetect=autoDetect)
+        processor = ImageProcessor(
+            image_content, resize_dims=resize_dims, operations=operations, autoDetect=autoDetect)
         processed_bytes, conf, steps, duration = await run_in_threadpool(processor.process)
         filename = f"processed/{img_record.user_id}/{image_id}.jpg"
         upload_res = upload_image_to_cloudinary(processed_bytes, filename)
@@ -101,18 +109,22 @@ async def process_image_asset(
         return {
             "status": "completed",
             "url": img_record.processed_url,
+            "name": img_record.name,
             "telemetry": {"confidence": conf, "steps": steps, "time_ms": duration}
         }
     except Exception as e:
         img_record.processing_status = "failed"
         await db.commit()
         raise HTTPException(status_code=500, detail=str(e))
+
+
 @router.get("/gallery")
 async def get_gallery(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(deps.get_current_user)
 ):
-    query = select(Upload).where(Upload.user_id == current_user.id).order_by(Upload.created_at.desc()).limit(20)
+    query = select(Upload).where(Upload.user_id == current_user.id).order_by(
+        Upload.created_at.desc()).limit(20)
     result = await db.execute(query)
     uploads = result.scalars().all()
     gallery = []
@@ -128,6 +140,7 @@ async def get_gallery(
                 {
                     "id": str(i.id),
                     "url": i.url,
+                    "name": i.name,
                     "processed_url": i.processed_url,
                     "processing_status": i.processing_status,
                     "thumbnail_url": i.thumbnail_url or i.url,

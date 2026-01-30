@@ -6,6 +6,7 @@ from datetime import datetime
 class ImageResponse(BaseModel):
     id: UUID
     url: str
+    name: str
     thumbnail_url: Optional[str] = None
     width: Optional[int] = None
     height: Optional[int] = None
