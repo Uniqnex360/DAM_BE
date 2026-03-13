@@ -1,4 +1,3 @@
-from django.contrib.auth.models import User
 from datetime import timedelta
 from typing import Any
 from fastapi import APIRouter, Depends, HTTPException, status
