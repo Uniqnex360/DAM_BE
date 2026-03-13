@@ -1,9 +1,11 @@
+from django.contrib.auth.models import User
 from datetime import timedelta
 from typing import Any
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordRequestForm
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
+from app.api import deps
 
 from app.core import security
 from app.core.config import settings
@@ -68,3 +70,11 @@ async def register_new_user(
     await db.commit()
     
     return user
+
+@router.get('/verify',response_model=dict)
+async def verify_token(current_user: User = Depends(deps.get_current_user),) -> Any:
+    return {
+        "valid": True,
+        "user": current_user.email,
+        "id": current_user.id
+    }
