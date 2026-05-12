@@ -13,7 +13,7 @@ from app.models.assets import Upload, Image
 from app.services.media import upload_image_to_cloudinary
 from app.services.image_processor import ImageProcessor
 from app.services.quality_analyzer import analyze_image_quality
-from app.schemas.asset import ImageResponse
+from app.schemas.asset import BatchUploadResponse, ImageResponse
 from app.schemas.analysis import AnalyzeRequest, AnalyzeResponse
 from app.core.config import settings
 router = APIRouter()
@@ -27,42 +27,59 @@ async def analyze_endpoint(request: AnalyzeRequest):
     except Exception as e:
         print(f"Analysis Error: {e}")
         raise HTTPException(status_code=400, detail=str(e))
-
-
-@router.post("/upload", response_model=ImageResponse)
+@router.post("/upload", response_model=BatchUploadResponse)
 async def upload_asset(
-    file: UploadFile = File(...),
+    files: list[UploadFile] = File(...),
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(deps.get_current_user)
 ):
-    if file.content_type not in ["image/jpeg", "image/png", "image/webp", "application/pdf"]:
-        raise HTTPException(status_code=400, detail="Invalid file type")
+    # Validate all files
+    for file in files:
+        if file.content_type not in ["image/jpeg", "image/png", "image/webp", "application/pdf"]:
+            raise HTTPException(status_code=400, detail=f"Invalid file type: {file.filename}")
+    
+    # Create ONE upload session for all files
     upload_record = Upload(user_id=current_user.id, status="uploaded")
     db.add(upload_record)
     await db.commit()
     await db.refresh(upload_record)
-    try:
-        unique_filename = f"{current_user.id}/{uuid.uuid4()}_{file.filename}"
-        file_content = await file.read()
-        result = upload_image_to_cloudinary(file_content, unique_filename)
-        new_image = Image(
-            upload_id=upload_record.id,
-            user_id=current_user.id,
-            url=result.get("secure_url"),
-            thumbnail_url=result.get("secure_url"),
-            width=result.get("width", 0),
-            height=result.get("height", 0),
-            processing_status="pending",
-            name=file.filename,
-            file_type=file.content_type
-        )
-        db.add(new_image)
-        await db.commit()
-        await db.refresh(new_image)
-        return new_image
-    except Exception as e:
+    
+    results = []
+    for file in files:
+        try:
+            unique_filename = f"{current_user.id}/{uuid.uuid4()}_{file.filename}"
+            file_content = await file.read()
+            result = upload_image_to_cloudinary(file_content, unique_filename)
+            new_image = Image(
+                upload_id=upload_record.id,
+                user_id=current_user.id,
+                url=result.get("secure_url"),
+                thumbnail_url=result.get("secure_url"),
+                width=result.get("width", 0),
+                height=result.get("height", 0),
+                processing_status="pending",
+                name=file.filename,
+                file_type=file.content_type
+            )
+            db.add(new_image)
+            await db.commit()
+            await db.refresh(new_image)
+            results.append({
+                "id": str(new_image.id),
+                "name": new_image.name,
+                "url": new_image.url,
+                "width": new_image.width,
+                "height": new_image.height
+            })
+        except Exception as e:
+            print(f"Failed to upload {file.filename}: {e}")
+            continue
+    
+    if not results:
         await db.rollback()
-        raise HTTPException(status_code=500, detail=f"Upload failed: {str(e)}")
+        raise HTTPException(status_code=500, detail="All uploads failed")
+    
+    return {"upload_id": str(upload_record.id), "images": results, "status": "uploaded"}
 
 
 @router.post("/{image_id}/process")

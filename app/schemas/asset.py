@@ -13,5 +13,14 @@ class ImageResponse(BaseModel):
     processing_status: str
     created_at: datetime
 
-    class Config:
-        from_attributes = True
+class BatchImageItem(BaseModel):
+    id: str
+    name: str
+    url: str
+    width: Optional[int] = None
+    height: Optional[int] = None
+
+class BatchUploadResponse(BaseModel):
+    upload_id: str
+    images: list[BatchImageItem]
+    status: str

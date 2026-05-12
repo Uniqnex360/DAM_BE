@@ -5,7 +5,7 @@ from pydantic import field_validator
 class Settings(BaseSettings):
     PROJECT_NAME: str = "Digital-Assets-Management"
     API_V1_STR: str = "/api/v1"
-    BACKEND_CORS_ORIGINS: List[str] = ["http://localhost:5174","https://dam-lyart-iota.vercel.app"]
+    BACKEND_CORS_ORIGINS: List[str] = ["http://localhost:5173","https://dam-lyart-iota.vercel.app"]
     STORAGE_PROVIDER: str = "local"
     POSTGRES_SERVER: str = "localhost"
     POSTGRES_USER: str = "postgres"
