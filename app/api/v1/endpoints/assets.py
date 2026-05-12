@@ -15,7 +15,8 @@ from app.services.image_processor import ImageProcessor
 from app.services.quality_analyzer import analyze_image_quality
 from app.schemas.asset import BatchUploadResponse, ImageResponse
 from app.schemas.analysis import AnalyzeRequest, AnalyzeResponse
-from app.core.config import settings
+from app.services.statistics import update_processing_stats
+
 router = APIRouter()
 
 
@@ -47,7 +48,8 @@ async def upload_asset(
     results = []
     for file in files:
         try:
-            unique_filename = f"{current_user.id}/{uuid.uuid4()}_{file.filename}"
+            file_ext = file.filename.rsplit('.', 1)[-1] if '.' in file.filename else 'jpg'
+            unique_filename = f"{current_user.id}/{uuid.uuid4()}.{file_ext}"
             file_content = await file.read()
             result = upload_image_to_cloudinary(file_content, unique_filename)
             new_image = Image(
@@ -98,6 +100,7 @@ async def process_image_asset(
     img_record = result.scalars().first()
     if not img_record:
         raise HTTPException(status_code=404, detail="Image not found")
+    client_id = current_user.profile.client_id if current_user.profile else None
     img_record.processing_status = "processing"
     await db.commit()
     try:
@@ -123,6 +126,24 @@ async def process_image_asset(
         img_record.processing_status = "completed"
         await db.commit()
         await db.refresh(img_record)
+        
+       
+        
+        # --- Stats Update Logic (in a fresh session) ---
+        print(f"🔥 DEBUG: Preparing to update stats. steps={steps}")
+        try:
+            from app.db.session import AsyncSessionLocal
+            async with AsyncSessionLocal() as stats_db:
+                if steps:
+                    for step in steps:
+                        await update_processing_stats(stats_db, current_user.id, client_id, "analysis_only", duration)
+                else:
+                    await update_processing_stats(stats_db, current_user.id, client_id, "analysis_only", duration)
+                await stats_db.commit()
+                print("🔥 DEBUG: Stats committed successfully")
+        except Exception as e:
+            print(f"❌ Stats update failed (non-critical): {e}")
+            await db.rollback()
         return {
             "status": "completed",
             "url": img_record.processed_url,
