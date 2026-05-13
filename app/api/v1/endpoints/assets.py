@@ -16,7 +16,6 @@ from app.services.quality_analyzer import analyze_image_quality
 from app.schemas.asset import BatchUploadResponse, ImageResponse
 from app.schemas.analysis import AnalyzeRequest, AnalyzeResponse
 from app.services.statistics import update_processing_stats
-
 router = APIRouter()
 
 
@@ -28,27 +27,28 @@ async def analyze_endpoint(request: AnalyzeRequest):
     except Exception as e:
         print(f"Analysis Error: {e}")
         raise HTTPException(status_code=400, detail=str(e))
+
+
 @router.post("/upload", response_model=BatchUploadResponse)
 async def upload_asset(
     files: list[UploadFile] = File(...),
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(deps.get_current_user)
 ):
-    # Validate all files
     for file in files:
         if file.content_type not in ["image/jpeg", "image/png", "image/webp", "application/pdf"]:
-            raise HTTPException(status_code=400, detail=f"Invalid file type: {file.filename}")
-    
-    # Create ONE upload session for all files
+            raise HTTPException(
+                status_code=400, detail=f"Invalid file type: {file.filename}")
     upload_record = Upload(user_id=current_user.id, status="uploaded")
     db.add(upload_record)
     await db.commit()
     await db.refresh(upload_record)
-    
+    successful_uploads=0
     results = []
     for file in files:
         try:
-            file_ext = file.filename.rsplit('.', 1)[-1] if '.' in file.filename else 'jpg'
+            file_ext = file.filename.rsplit(
+                '.', 1)[-1] if '.' in file.filename else 'jpg'
             unique_filename = f"{current_user.id}/{uuid.uuid4()}.{file_ext}"
             file_content = await file.read()
             result = upload_image_to_cloudinary(file_content, unique_filename)
@@ -73,14 +73,25 @@ async def upload_asset(
                 "width": new_image.width,
                 "height": new_image.height
             })
+            successful_uploads+=1
         except Exception as e:
             print(f"Failed to upload {file.filename}: {e}")
             continue
-    
     if not results:
         await db.rollback()
         raise HTTPException(status_code=500, detail="All uploads failed")
-    
+    try:
+        from app.db.session import AsyncSessionLocal
+        async with AsyncSessionLocal() as stats_db:
+            client_id = current_user.profile.client_id if current_user.profile else None
+            
+            for _ in range(successful_uploads):
+                await update_processing_stats(stats_db, current_user.id, client_id, "upload", 0)
+            
+            await stats_db.commit()
+            print(f"🔥 DEBUG: Recorded {successful_uploads} uploads")
+    except Exception as e:
+        print(f"❌ Upload stats failed (non-critical): {e}")
     return {"upload_id": str(upload_record.id), "images": results, "status": "uploaded"}
 
 
@@ -126,19 +137,18 @@ async def process_image_asset(
         img_record.processing_status = "completed"
         await db.commit()
         await db.refresh(img_record)
-        
-       
-        
-        # --- Stats Update Logic (in a fresh session) ---
         print(f"🔥 DEBUG: Preparing to update stats. steps={steps}")
         try:
             from app.db.session import AsyncSessionLocal
             async with AsyncSessionLocal() as stats_db:
                 if steps:
                     for step in steps:
-                        await update_processing_stats(stats_db, current_user.id, client_id, "analysis_only", duration)
+                        print(f"🔥 DEBUG: Updating stats for step: {step}")
+                        await update_processing_stats(stats_db, current_user.id, client_id, step, duration)
+                        await stats_db.commit()
+                        print("🔥 DEBUG: Stats committed successfully")
                 else:
-                    await update_processing_stats(stats_db, current_user.id, client_id, "analysis_only", duration)
+                    print("🔥 DEBUG: No operations applied, skipping stats update")
                 await stats_db.commit()
                 print("🔥 DEBUG: Stats committed successfully")
         except Exception as e:
