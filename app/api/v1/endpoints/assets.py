@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, UploadFile, File, HTTPException, Body
+from fastapi import APIRouter, Depends, UploadFile, File, HTTPException, Body,Form
 from fastapi.concurrency import run_in_threadpool
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
@@ -16,6 +16,7 @@ from app.services.quality_analyzer import analyze_image_quality
 from app.schemas.asset import BatchUploadResponse, ImageResponse
 from app.schemas.analysis import AnalyzeRequest, AnalyzeResponse
 from app.services.statistics import update_processing_stats
+from app.models.project import Project
 router = APIRouter()
 
 
@@ -32,14 +33,32 @@ async def analyze_endpoint(request: AnalyzeRequest):
 @router.post("/upload", response_model=BatchUploadResponse)
 async def upload_asset(
     files: list[UploadFile] = File(...),
+    project_name:str=Form(None),
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(deps.get_current_user)
 ):
+    project_id = None
+    if project_name:
+        existing = await db.execute(
+            select(Project).where(Project.name == project_name, Project.user_id == current_user.id)
+        )
+        proj = existing.scalars().first()
+        if not proj:
+            proj = Project(user_id=current_user.id, name=project_name)
+            db.add(proj)
+            await db.commit()
+            await db.refresh(proj)
+        project_id = proj.id
     for file in files:
         if file.content_type not in ["image/jpeg", "image/png", "image/webp", "application/pdf"]:
             raise HTTPException(
                 status_code=400, detail=f"Invalid file type: {file.filename}")
-    upload_record = Upload(user_id=current_user.id, status="uploaded")
+    upload_record = Upload(
+    user_id=current_user.id, 
+    status="uploaded", 
+    project_id=project_id,
+    metadata_obj={"project_name": project_name} if project_name else {}
+)
     db.add(upload_record)
     await db.commit()
     await db.refresh(upload_record)
@@ -165,7 +184,6 @@ async def process_image_asset(
         await db.commit()
         raise HTTPException(status_code=500, detail=str(e))
 
-
 @router.get("/gallery")
 async def get_gallery(
     db: AsyncSession = Depends(get_db),
@@ -183,7 +201,7 @@ async def get_gallery(
             "id": str(up.id),
             "status": up.status,
             "created_at": up.created_at,
-            "metadata": {},
+            "metadata": up.metadata_obj or {}, 
             "images": [
                 {
                     "id": str(i.id),

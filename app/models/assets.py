@@ -1,12 +1,15 @@
 from sqlalchemy import Column, String, ForeignKey, Integer,Boolean, Text, Numeric
 from sqlalchemy.dialects.postgresql import UUID, JSONB
 from sqlalchemy import text
+from sqlalchemy.orm import relationship
 from .base import Base
 class Upload(Base):
     __tablename__='uploads'
     user_id=Column(UUID(as_uuid=True),ForeignKey('users.id'))
     product_id=Column(UUID(as_uuid=True),ForeignKey('products.id'))
+    project_id = Column(UUID(as_uuid=True), ForeignKey('projects.id'))  
     status=Column(String,server_default='uploaded')
+    project = relationship("Project", back_populates="uploads") 
     metadata_obj=Column('metadata',JSONB,server_default=text("'{}'::jsonb"))
 
 class Image(Base):
