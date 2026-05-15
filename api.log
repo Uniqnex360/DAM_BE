@@ -1,0 +1,176 @@
+nohup: ignoring input
+INFO  [alembic.runtime.migration] Context impl PostgresqlImpl.
+INFO  [alembic.runtime.migration] Will assume transactional DDL.
+/usr/local/lib/python3.10/site-packages/transparent_background/gui.py:24: UserWarning: Failed to import flet. Ignore this message when you do not need GUI mode.
+  warnings.warn('Failed to import flet. Ignore this message when you do not need GUI mode.')
+INFO:     Started server process [9]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+INFO:     Uvicorn running on http://0.0.0.0:10000 (Press CTRL+C to quit)
+INFO:     172.18.0.1:37592 - "OPTIONS /api/v1/assets/gallery HTTP/1.1" 200 OK
+INFO:     172.18.0.1:37606 - "OPTIONS /api/v1/reports/processing HTTP/1.1" 200 OK
+INFO:     172.18.0.1:37614 - "OPTIONS /api/v1/assets/gallery HTTP/1.1" 200 OK
+INFO:     172.18.0.1:37630 - "OPTIONS /api/v1/reports/processing HTTP/1.1" 200 OK
+INFO:     172.18.0.1:37606 - "GET /api/v1/reports/processing HTTP/1.1" 200 OK
+INFO:     172.18.0.1:37630 - "GET /api/v1/assets/gallery HTTP/1.1" 200 OK
+INFO:     172.18.0.1:37592 - "GET /api/v1/reports/processing HTTP/1.1" 200 OK
+INFO:     172.18.0.1:37614 - "GET /api/v1/assets/gallery HTTP/1.1" 200 OK
+INFO:     172.18.0.1:50762 - "OPTIONS /api/v1/assets/gallery HTTP/1.1" 200 OK
+INFO:     172.18.0.1:50770 - "OPTIONS /api/v1/reports/processing HTTP/1.1" 200 OK
+INFO:     172.18.0.1:50776 - "OPTIONS /api/v1/assets/gallery HTTP/1.1" 200 OK
+INFO:     172.18.0.1:50784 - "OPTIONS /api/v1/reports/processing HTTP/1.1" 200 OK
+INFO:     172.18.0.1:50762 - "GET /api/v1/reports/processing HTTP/1.1" 200 OK
+INFO:     172.18.0.1:50770 - "GET /api/v1/reports/processing HTTP/1.1" 200 OK
+INFO:     172.18.0.1:50776 - "GET /api/v1/assets/gallery HTTP/1.1" 200 OK
+INFO:     172.18.0.1:50784 - "GET /api/v1/assets/gallery HTTP/1.1" 200 OK
+INFO:     172.18.0.1:39162 - "OPTIONS /api/v1/assets/gallery HTTP/1.1" 200 OK
+INFO:     172.18.0.1:39178 - "OPTIONS /api/v1/reports/processing HTTP/1.1" 200 OK
+INFO:     172.18.0.1:39192 - "OPTIONS /api/v1/assets/gallery HTTP/1.1" 200 OK
+INFO:     172.18.0.1:39162 - "OPTIONS /api/v1/reports/processing HTTP/1.1" 200 OK
+INFO:     172.18.0.1:39204 - "GET /api/v1/reports/processing HTTP/1.1" 200 OK
+INFO:     172.18.0.1:39178 - "GET /api/v1/reports/processing HTTP/1.1" 200 OK
+INFO:     172.18.0.1:39162 - "GET /api/v1/assets/gallery HTTP/1.1" 200 OK
+INFO:     172.18.0.1:39192 - "GET /api/v1/assets/gallery HTTP/1.1" 200 OK
+INFO:     172.18.0.1:34864 - "OPTIONS /api/v1/assets/gallery HTTP/1.1" 200 OK
+INFO:     172.18.0.1:34876 - "OPTIONS /api/v1/assets/gallery HTTP/1.1" 200 OK
+INFO:     172.18.0.1:34876 - "GET /api/v1/assets/gallery HTTP/1.1" 200 OK
+INFO:     172.18.0.1:34864 - "GET /api/v1/assets/gallery HTTP/1.1" 200 OK
+INFO:     172.18.0.1:40434 - "OPTIONS /api/v1/assets/gallery HTTP/1.1" 200 OK
+INFO:     172.18.0.1:40434 - "GET /api/v1/assets/gallery HTTP/1.1" 200 OK
+INFO:     172.18.0.1:40434 - "OPTIONS /api/v1/assets/upload HTTP/1.1" 200 OK
+WARNING:urllib3.connectionpool:Retrying (Retry(total=2, connect=None, read=None, redirect=None, status=None)) after connection broken by 'NameResolutionError("HTTPSConnection(host='api.cloudinary.com', port=443): Failed to resolve 'api.cloudinary.com' ([Errno -3] Temporary failure in name resolution)")': /v1_1/dh75n51on/auto/upload
+WARNING:urllib3.connectionpool:Retrying (Retry(total=1, connect=None, read=None, redirect=None, status=None)) after connection broken by 'NameResolutionError("HTTPSConnection(host='api.cloudinary.com', port=443): Failed to resolve 'api.cloudinary.com' ([Errno -3] Temporary failure in name resolution)")': /v1_1/dh75n51on/auto/upload
+WARNING:urllib3.connectionpool:Retrying (Retry(total=0, connect=None, read=None, redirect=None, status=None)) after connection broken by 'NameResolutionError("HTTPSConnection(host='api.cloudinary.com', port=443): Failed to resolve 'api.cloudinary.com' ([Errno -3] Temporary failure in name resolution)")': /v1_1/dh75n51on/auto/upload
+Cloudinary Error: Unexpected error - MaxRetryError('TCPKeepAliveHTTPSConnectionPool(host=\'api.cloudinary.com\', port=443): Max retries exceeded with url: /v1_1/dh75n51on/auto/upload (Caused by NameResolutionError("HTTPSConnection(host=\'api.cloudinary.com\', port=443): Failed to resolve \'api.cloudinary.com\' ([Errno -3] Temporary failure in name resolution)"))')
+Failed to upload image (26).png: Unexpected error - MaxRetryError('TCPKeepAliveHTTPSConnectionPool(host=\'api.cloudinary.com\', port=443): Max retries exceeded with url: /v1_1/dh75n51on/auto/upload (Caused by NameResolutionError("HTTPSConnection(host=\'api.cloudinary.com\', port=443): Failed to resolve \'api.cloudinary.com\' ([Errno -3] Temporary failure in name resolution)"))')
+INFO:     172.18.0.1:40440 - "OPTIONS /api/v1/assets/gallery HTTP/1.1" 200 OK
+INFO:     172.18.0.1:40454 - "OPTIONS /api/v1/reports/processing HTTP/1.1" 200 OK
+INFO:     172.18.0.1:40464 - "OPTIONS /api/v1/assets/gallery HTTP/1.1" 200 OK
+INFO:     172.18.0.1:40434 - "POST /api/v1/assets/upload HTTP/1.1" 500 Internal Server Error
+INFO:     172.18.0.1:40468 - "OPTIONS /api/v1/reports/processing HTTP/1.1" 200 OK
+INFO:     172.18.0.1:38826 - "OPTIONS /api/v1/assets/gallery HTTP/1.1" 200 OK
+INFO:     172.18.0.1:40440 - "OPTIONS /api/v1/assets/gallery HTTP/1.1" 200 OK
+INFO:     172.18.0.1:40454 - "OPTIONS /api/v1/assets/gallery HTTP/1.1" 200 OK
+INFO:     172.18.0.1:40464 - "OPTIONS /api/v1/assets/gallery HTTP/1.1" 200 OK
+INFO:     172.18.0.1:40468 - "OPTIONS /api/v1/assets/gallery HTTP/1.1" 200 OK
+INFO:     172.18.0.1:38826 - "OPTIONS /api/v1/assets/gallery HTTP/1.1" 200 OK
+INFO:     172.18.0.1:40440 - "OPTIONS /api/v1/reports/processing HTTP/1.1" 200 OK
+INFO:     172.18.0.1:40434 - "OPTIONS /api/v1/assets/gallery HTTP/1.1" 200 OK
+INFO:     172.18.0.1:40454 - "OPTIONS /api/v1/reports/processing HTTP/1.1" 200 OK
+INFO:     172.18.0.1:40464 - "OPTIONS /api/v1/assets/gallery HTTP/1.1" 200 OK
+INFO:     172.18.0.1:38826 - "OPTIONS /api/v1/assets/gallery HTTP/1.1" 200 OK
+INFO:     172.18.0.1:40468 - "OPTIONS /api/v1/assets/gallery HTTP/1.1" 200 OK
+INFO:     172.18.0.1:40454 - "GET /api/v1/reports/processing HTTP/1.1" 200 OK
+INFO:     172.18.0.1:40464 - "GET /api/v1/reports/processing HTTP/1.1" 200 OK
+INFO:     172.18.0.1:40434 - "GET /api/v1/assets/gallery HTTP/1.1" 200 OK
+INFO:     172.18.0.1:40440 - "GET /api/v1/assets/gallery HTTP/1.1" 200 OK
+INFO:     172.18.0.1:40464 - "GET /api/v1/assets/gallery HTTP/1.1" 200 OK
+INFO:     172.18.0.1:40454 - "GET /api/v1/assets/gallery HTTP/1.1" 200 OK
+INFO:     172.18.0.1:40440 - "GET /api/v1/reports/processing HTTP/1.1" 200 OK
+INFO:     172.18.0.1:40434 - "GET /api/v1/reports/processing HTTP/1.1" 200 OK
+INFO:     172.18.0.1:38826 - "GET /api/v1/assets/gallery HTTP/1.1" 200 OK
+INFO:     172.18.0.1:40468 - "GET /api/v1/assets/gallery HTTP/1.1" 200 OK
+INFO:     172.18.0.1:40434 - "GET /api/v1/assets/gallery HTTP/1.1" 200 OK
+INFO:     172.18.0.1:40464 - "GET /api/v1/assets/gallery HTTP/1.1" 200 OK
+INFO:     172.18.0.1:40440 - "GET /api/v1/assets/gallery HTTP/1.1" 200 OK
+INFO:     172.18.0.1:40454 - "GET /api/v1/assets/gallery HTTP/1.1" 200 OK
+INFO:     172.18.0.1:38826 - "GET /api/v1/assets/gallery HTTP/1.1" 200 OK
+INFO:     172.18.0.1:40468 - "GET /api/v1/assets/gallery HTTP/1.1" 200 OK
+INFO:     172.18.0.1:40468 - "OPTIONS /api/v1/assets/gallery HTTP/1.1" 200 OK
+INFO:     172.18.0.1:40468 - "GET /api/v1/assets/gallery HTTP/1.1" 200 OK
+INFO:     172.18.0.1:32818 - "OPTIONS /api/v1/assets/gallery HTTP/1.1" 200 OK
+INFO:     172.18.0.1:32818 - "GET /api/v1/assets/gallery HTTP/1.1" 200 OK
+INFO:     172.18.0.1:43520 - "OPTIONS /api/v1/assets/gallery HTTP/1.1" 200 OK
+INFO:     172.18.0.1:43520 - "GET /api/v1/assets/gallery HTTP/1.1" 200 OK
+INFO:     172.18.0.1:36732 - "OPTIONS /api/v1/assets/gallery HTTP/1.1" 200 OK
+INFO:     172.18.0.1:36732 - "GET /api/v1/assets/gallery HTTP/1.1" 200 OK
+INFO:     172.18.0.1:43440 - "OPTIONS /api/v1/assets/gallery HTTP/1.1" 200 OK
+INFO:     172.18.0.1:43440 - "GET /api/v1/assets/gallery HTTP/1.1" 200 OK
+INFO:     172.18.0.1:43884 - "OPTIONS /api/v1/assets/gallery HTTP/1.1" 200 OK
+INFO:     172.18.0.1:43884 - "GET /api/v1/assets/gallery HTTP/1.1" 200 OK
+INFO:     172.18.0.1:58154 - "OPTIONS /api/v1/assets/gallery HTTP/1.1" 200 OK
+INFO:     172.18.0.1:58154 - "GET /api/v1/assets/gallery HTTP/1.1" 200 OK
+INFO:     172.18.0.1:59570 - "OPTIONS /api/v1/assets/gallery HTTP/1.1" 200 OK
+INFO:     172.18.0.1:59570 - "GET /api/v1/assets/gallery HTTP/1.1" 200 OK
+INFO:     172.18.0.1:57358 - "OPTIONS /api/v1/assets/gallery HTTP/1.1" 200 OK
+INFO:     172.18.0.1:57358 - "GET /api/v1/assets/gallery HTTP/1.1" 200 OK
+INFO:     172.18.0.1:46412 - "OPTIONS /api/v1/assets/gallery HTTP/1.1" 200 OK
+INFO:     172.18.0.1:46412 - "GET /api/v1/assets/gallery HTTP/1.1" 200 OK
+INFO:     172.18.0.1:54772 - "OPTIONS /api/v1/assets/gallery HTTP/1.1" 200 OK
+INFO:     172.18.0.1:54772 - "GET /api/v1/assets/gallery HTTP/1.1" 200 OK
+INFO:     172.18.0.1:32902 - "OPTIONS /api/v1/assets/gallery HTTP/1.1" 200 OK
+INFO:     172.18.0.1:32902 - "GET /api/v1/assets/gallery HTTP/1.1" 200 OK
+INFO:     172.18.0.1:60240 - "OPTIONS /api/v1/assets/gallery HTTP/1.1" 200 OK
+INFO:     172.18.0.1:60240 - "GET /api/v1/assets/gallery HTTP/1.1" 200 OK
+INFO:     172.18.0.1:51562 - "OPTIONS /api/v1/assets/gallery HTTP/1.1" 200 OK
+INFO:     172.18.0.1:51562 - "GET /api/v1/assets/gallery HTTP/1.1" 200 OK
+INFO:     172.18.0.1:52810 - "OPTIONS /api/v1/assets/gallery HTTP/1.1" 200 OK
+INFO:     172.18.0.1:52810 - "GET /api/v1/assets/gallery HTTP/1.1" 200 OK
+INFO:     172.18.0.1:59292 - "OPTIONS /api/v1/assets/gallery HTTP/1.1" 200 OK
+INFO:     172.18.0.1:59292 - "GET /api/v1/assets/gallery HTTP/1.1" 200 OK
+INFO:     172.18.0.1:59292 - "OPTIONS /api/v1/assets/gallery HTTP/1.1" 200 OK
+INFO:     172.18.0.1:59292 - "GET /api/v1/assets/gallery HTTP/1.1" 200 OK
+INFO:     172.18.0.1:46476 - "OPTIONS /api/v1/assets/gallery HTTP/1.1" 200 OK
+INFO:     172.18.0.1:46476 - "GET /api/v1/assets/gallery HTTP/1.1" 200 OK
+INFO:     172.18.0.1:46476 - "OPTIONS /api/v1/assets/upload HTTP/1.1" 200 OK
+🔥 DEBUG: Recorded 1 uploads
+INFO:     172.18.0.1:46476 - "POST /api/v1/assets/upload HTTP/1.1" 200 OK
+INFO:     172.18.0.1:46476 - "OPTIONS /api/v1/assets/62077378-8104-46e6-bfe7-4ddcf9f2ede5/process HTTP/1.1" 200 OK
+DEBUG: operations=['crop']
+DEBUG: options={}
+DEBUG: options type=<class 'dict'>
+✅ process() called: auto_detect=False, operations=['crop']
+✅ analyze: Image size=1168x745, resize_dims=None
+✅ analyze: Confidence scores = {'bg_clean': np.float64(1.0), 'shadow': np.float64(0.3292727774202445), 'crop': 0.0, 'watermark': 0.85, 'resize': 0.0}
+✅ process() complete: steps_applied=['smart_crop']
+🔥 DEBUG: Preparing to update stats. steps=['smart_crop']
+🔥 DEBUG: Updating stats for step: smart_crop
+🔥 DEBUG: Stats committed successfully
+🔥 DEBUG: Stats committed successfully
+INFO:     172.18.0.1:46476 - "POST /api/v1/assets/62077378-8104-46e6-bfe7-4ddcf9f2ede5/process HTTP/1.1" 200 OK
+INFO:     172.18.0.1:46476 - "OPTIONS /api/v1/assets/gallery HTTP/1.1" 200 OK
+INFO:     172.18.0.1:46476 - "GET /api/v1/assets/gallery HTTP/1.1" 200 OK
+INFO:     172.18.0.1:59108 - "OPTIONS /api/v1/assets/gallery HTTP/1.1" 200 OK
+INFO:     172.18.0.1:59108 - "GET /api/v1/assets/gallery HTTP/1.1" 200 OK
+INFO:     172.18.0.1:59580 - "OPTIONS /api/v1/assets/gallery HTTP/1.1" 200 OK
+INFO:     172.18.0.1:59580 - "GET /api/v1/assets/gallery HTTP/1.1" 200 OK
+INFO:     172.18.0.1:55072 - "OPTIONS /api/v1/assets/gallery HTTP/1.1" 200 OK
+INFO:     172.18.0.1:55072 - "GET /api/v1/assets/gallery HTTP/1.1" 200 OK
+INFO:     172.18.0.1:40822 - "OPTIONS /api/v1/assets/gallery HTTP/1.1" 200 OK
+INFO:     172.18.0.1:40822 - "GET /api/v1/assets/gallery HTTP/1.1" 200 OK
+INFO:     172.18.0.1:45266 - "OPTIONS /api/v1/assets/gallery HTTP/1.1" 200 OK
+INFO:     172.18.0.1:45266 - "GET /api/v1/assets/gallery HTTP/1.1" 200 OK
+INFO:     172.18.0.1:56668 - "OPTIONS /api/v1/assets/gallery HTTP/1.1" 200 OK
+INFO:     172.18.0.1:56668 - "GET /api/v1/assets/gallery HTTP/1.1" 200 OK
+INFO:     172.18.0.1:48826 - "OPTIONS /api/v1/assets/gallery HTTP/1.1" 200 OK
+INFO:     172.18.0.1:48826 - "GET /api/v1/assets/gallery HTTP/1.1" 200 OK
+INFO:     172.18.0.1:51640 - "OPTIONS /api/v1/assets/gallery HTTP/1.1" 200 OK
+INFO:     172.18.0.1:51640 - "GET /api/v1/assets/gallery HTTP/1.1" 200 OK
+INFO:     172.18.0.1:32916 - "OPTIONS /api/v1/assets/gallery HTTP/1.1" 200 OK
+INFO:     172.18.0.1:32916 - "GET /api/v1/assets/gallery HTTP/1.1" 200 OK
+INFO:     172.18.0.1:55586 - "OPTIONS /api/v1/assets/gallery HTTP/1.1" 200 OK
+INFO:     172.18.0.1:55586 - "GET /api/v1/assets/gallery HTTP/1.1" 200 OK
+INFO:     172.18.0.1:51292 - "OPTIONS /api/v1/assets/gallery HTTP/1.1" 200 OK
+INFO:     172.18.0.1:51292 - "GET /api/v1/assets/gallery HTTP/1.1" 200 OK
+INFO:     172.18.0.1:36558 - "OPTIONS /api/v1/assets/gallery HTTP/1.1" 200 OK
+INFO:     172.18.0.1:36558 - "GET /api/v1/assets/gallery HTTP/1.1" 200 OK
+INFO:     172.18.0.1:51528 - "OPTIONS /api/v1/assets/gallery HTTP/1.1" 200 OK
+INFO:     172.18.0.1:51528 - "GET /api/v1/assets/gallery HTTP/1.1" 200 OK
+INFO:     172.18.0.1:34668 - "OPTIONS /api/v1/assets/gallery HTTP/1.1" 200 OK
+INFO:     172.18.0.1:34668 - "GET /api/v1/assets/gallery HTTP/1.1" 200 OK
+INFO:     172.18.0.1:40160 - "OPTIONS /api/v1/assets/gallery HTTP/1.1" 200 OK
+INFO:     172.18.0.1:40160 - "GET /api/v1/assets/gallery HTTP/1.1" 200 OK
+INFO:     172.18.0.1:48480 - "OPTIONS /api/v1/reports/processing HTTP/1.1" 200 OK
+INFO:     172.18.0.1:48482 - "OPTIONS /api/v1/reports/processing HTTP/1.1" 200 OK
+INFO:     172.18.0.1:48498 - "OPTIONS /api/v1/assets/gallery HTTP/1.1" 200 OK
+INFO:     172.18.0.1:48510 - "OPTIONS /api/v1/assets/gallery HTTP/1.1" 200 OK
+INFO:     172.18.0.1:48510 - "GET /api/v1/reports/processing HTTP/1.1" 200 OK
+INFO:     172.18.0.1:48498 - "GET /api/v1/reports/processing HTTP/1.1" 200 OK
+INFO:     172.18.0.1:48480 - "GET /api/v1/assets/gallery HTTP/1.1" 200 OK
+INFO:     172.18.0.1:48482 - "GET /api/v1/assets/gallery HTTP/1.1" 200 OK
+INFO:     172.18.0.1:48482 - "OPTIONS /api/v1/assets/gallery HTTP/1.1" 200 OK
+INFO:     172.18.0.1:48480 - "OPTIONS /api/v1/assets/gallery HTTP/1.1" 200 OK
+INFO:     172.18.0.1:48480 - "GET /api/v1/assets/gallery HTTP/1.1" 200 OK
+INFO:     172.18.0.1:48482 - "GET /api/v1/assets/gallery HTTP/1.1" 200 OK
+INFO:     172.18.0.1:46610 - "OPTIONS /api/v1/assets/gallery HTTP/1.1" 200 OK
+INFO:     172.18.0.1:46610 - "GET /api/v1/assets/gallery HTTP/1.1" 200 OK

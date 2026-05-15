@@ -199,7 +199,7 @@ async def get_gallery(
         images_list = imgs.scalars().all()
         gallery.append({
             "id": str(up.id),
-            "status": up.status,
+            "status": up.status,    
             "created_at": up.created_at,
             "metadata": up.metadata_obj or {}, 
             "images": [
