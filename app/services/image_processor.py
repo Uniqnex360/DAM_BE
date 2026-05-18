@@ -32,6 +32,7 @@ class ImageProcessor:
         self.original_h, self.original_w = self.img.shape[:2]
         self.resize_dims = resize_dims
         self.operations = operations or []
+        self.original_img = self.img.copy()
         self.auto_detect = autoDetect
         logger.info(f"ImageProcessor initialized: dims={self.original_w}x{self.original_h}, "
                     f"resize_dims={self.resize_dims}, operations={self.operations}")
@@ -46,32 +47,42 @@ class ImageProcessor:
             return
 
         # Get target dimensions - don't use 'or' with dict.get()
-        target_w = self.resize_dims.get("width")
-        target_h = self.resize_dims.get("height")
-        print(f"🔍 DEBUG: target_w={target_w}, target_h={target_h}")
+        if isinstance(self.resize_dims, list):
+            results = []
+            for config in self.resize_dims:
+                result = self._apply_single_resize(self.original_img, config)
+
+                results.append({
+                    "id": config.get("id"),
+                    "width": config.get("width"),
+                    "height": config.get("height"),
+                    "image_bytes": result
+                })
+            return results
+        else:
+            # Single resize (backward compatibility)
+            return self._apply_single_resize(self.img, self.resize_dims)
+
+    def _apply_single_resize(self, img, resize_config):
+        target_w = resize_config.get("width")
+        target_h = resize_config.get("height")
+        
         if not target_w or not target_h:
-            print(
-                f"resize_ecom: Invalid dimensions width={target_w}, height={target_h}")
-            return
-
-        print(f"resize_ecom: Resizing to {target_w}x{target_h}")
-
+            return None
+        
+        h, w = img.shape[:2]  
         scale = min(target_w / w, target_h / h)
         new_w, new_h = int(w * scale), int(h * scale)
-
-        print(f"resize_ecom: Scaled size will be {new_w}x{new_h}")
-
-        pil = Image.fromarray(cv2.cvtColor(self.img, cv2.COLOR_BGR2RGB))
+        
+        pil = Image.fromarray(cv2.cvtColor(img, cv2.COLOR_BGR2RGB))  #
         pil = pil.resize((new_w, new_h), Image.LANCZOS)
-
+        
         canvas = Image.new("RGB", (target_w, target_h), (255, 255, 255))
         offset = ((target_w - new_w) // 2, (target_h - new_h) // 2)
         canvas.paste(pil, offset)
-
-        self.img = cv2.cvtColor(np.array(canvas), cv2.COLOR_RGB2BGR)
-
-        final_h, final_w = self.img.shape[:2]
-        print(f"resize_ecom: Final size={final_w}x{final_h}")
+        
+        return cv2.cvtColor(np.array(canvas), cv2.COLOR_RGB2BGR)
+        
 
     def _foreground_mask(self, img) -> np.ndarray:
 
@@ -98,16 +109,25 @@ class ImageProcessor:
 
         # 1. Resize Confidence - Only resize if custom dimensions are provided
         if self.resize_dims:
-            target_w = self.resize_dims.get("width")
-            target_h = self.resize_dims.get("height")
-            # Only resize if dimensions are different from current
-            if target_w and target_h and (w != target_w or h != target_h):
-                conf["resize"] = 1.0
+            needs_resize = False
+            if isinstance(self.resize_dims, list):
+                for dim in self.resize_dims:
+                    target_w = dim.get("width")
+                    target_h = dim.get("height")
+                    if target_w and target_h and (w != target_w or h != target_h):
+                        needs_resize = True
+                        break
             else:
-                conf["resize"] = 0.0  # Skip resize - already correct size
+                target_w = self.resize_dims.get("width")
+                target_h = self.resize_dims.get("height")
+                if target_w and target_h and (w != target_w or h != target_h):
+                    needs_resize = True
+            conf["resize"] = 1.0 if needs_resize else 0.0
         else:
-            # If no custom dimensions provided, don't resize - keep original
             conf["resize"] = 0.0
+
+           
+        
 
         # 2. Crop Confidence (If foreground is tiny)
         if fg_ratio < 0.35:
@@ -285,8 +305,9 @@ class ImageProcessor:
 
     #     return conf
 
-    def process(self) -> Tuple[bytes, Dict, List[str], int]:
+    def process(self) -> Dict:  
         start_time = time.time()
+        self.resize_results = None
         steps_applied = []
         print(
             f"✅ process() called: auto_detect={self.auto_detect}, operations={self.operations}")
@@ -336,14 +357,17 @@ class ImageProcessor:
             if "bg-remove" in self.operations or "bg_removal" in self.operations:
                 self.clean_background()
                 steps_applied.append("bg_removal")
-
-            if "resize" in self.operations:
-                if self.resize_dims:
-                    self.resize_ecom()
+            if self.resize_dims:
+                result = self.resize_ecom()
+                if isinstance(result, list):
+                    self.resize_results = result
+                    steps_applied.append("resize_multiple")
+                elif result is not None:
+                    self.img = result
                     steps_applied.append("resize")
-                else:
-                    logger.warning(
-                        "Resize requested but no dimensions provided")
+            else:
+                if "resize" in self.operations:
+                    logger.warning("Resize requested but no dimensions provided")
         print(f"✅ process() complete: steps_applied={steps_applied}")
         # Finalize and return
         end_time = time.time()
@@ -351,4 +375,10 @@ class ImageProcessor:
 
         success, encoded_img = cv2.imencode(
             ".jpg", self.img, [cv2.IMWRITE_JPEG_QUALITY, 95])
-        return encoded_img.tobytes(), confidence, steps_applied, duration_ms
+        return {
+    "image_bytes": encoded_img.tobytes(),
+    "confidence": confidence,
+    "steps_applied": steps_applied,
+    "duration_ms": duration_ms,
+    "resize_results": self.resize_results
+}

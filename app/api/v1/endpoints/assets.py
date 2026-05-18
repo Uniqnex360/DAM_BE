@@ -6,6 +6,8 @@ from sqlalchemy.orm import selectinload
 import uuid
 import requests
 import os
+import cv2
+import numpy as np 
 from app.api import deps
 from app.db.session import get_db
 from app.models.auth import User
@@ -146,39 +148,115 @@ async def process_image_asset(
         resize_dims = options.get("resize") if options.get("resize") else None
         processor = ImageProcessor(
             image_content, resize_dims=resize_dims, operations=operations, autoDetect=autoDetect)
-        processed_bytes, conf, steps, duration = await run_in_threadpool(processor.process)
-        filename = f"processed/{img_record.user_id}/{image_id}.jpg"
-        upload_res = upload_image_to_cloudinary(processed_bytes, filename)
-        img_record.processed_url = upload_res.get("secure_url")
-        img_record.confidence_scores = conf
-        img_record.applied_steps = steps
-        img_record.processing_time_ms = duration
-        img_record.processing_status = "completed"
-        await db.commit()
-        await db.refresh(img_record)
-        print(f"🔥 DEBUG: Preparing to update stats. steps={steps}")
-        try:
-            from app.db.session import AsyncSessionLocal
-            async with AsyncSessionLocal() as stats_db:
-                if steps:
-                    for step in steps:
-                        print(f"🔥 DEBUG: Updating stats for step: {step}")
-                        await update_processing_stats(stats_db, current_user.id, client_id, step, duration)
-                        await stats_db.commit()
-                        print("🔥 DEBUG: Stats committed successfully")
-                else:
-                    print("🔥 DEBUG: No operations applied, skipping stats update")
-                await stats_db.commit()
-                print("🔥 DEBUG: Stats committed successfully")
-        except Exception as e:
-            print(f"❌ Stats update failed (non-critical): {e}")
-            await db.rollback()
-        return {
-            "status": "completed",
-            "url": img_record.processed_url,
-            "name": img_record.name,
-            "telemetry": {"confidence": conf, "steps": steps, "time_ms": duration}
-        }
+    #     # processed_bytes, conf, steps, duration = await run_in_threadpool(processor.process)
+    #     filename = f"processed/{img_record.user_id}/{image_id}.jpg"
+    #     upload_res = upload_image_to_cloudinary(processed_bytes, filename)
+    #     img_record.processed_url = upload_res.get("secure_url")
+    #     img_record.confidence_scores = conf
+    #     img_record.applied_steps = steps
+    #     img_record.processing_time_ms = duration
+    #     img_record.processing_status = "completed"
+    #     await db.commit()
+    #     await db.refresh(img_record)
+    #     print(f"🔥 DEBUG: Preparing to update stats. steps={steps}")
+    #     try:
+    #         from app.db.session import AsyncSessionLocal
+    #         async with AsyncSessionLocal() as stats_db:
+    #             if steps:
+    #                 for step in steps:
+    #                     print(f"🔥 DEBUG: Updating stats for step: {step}")
+    #                     await update_processing_stats(stats_db, current_user.id, client_id, step, duration)
+    #                     await stats_db.commit()
+    #                     print("🔥 DEBUG: Stats committed successfully")
+    #             else:
+    #                 print("🔥 DEBUG: No operations applied, skipping stats update")
+    #             await stats_db.commit()
+    #             print("🔥 DEBUG: Stats committed successfully")
+    #     except Exception as e:
+    #         print(f"❌ Stats update failed (non-critical): {e}")
+    #         await db.rollback()
+    #     return {
+    #         "status": "completed",
+    #         "url": img_record.processed_url,
+    #         "name": img_record.name,
+    #         "telemetry": {"confidence": conf, "steps": steps, "time_ms": duration}
+    #     }
+    # except Exception as e:
+    #     img_record.processing_status = "failed"
+    #     await db.commit()
+    #     raise HTTPException(status_code=500, detail=str(e))
+        proc_result = await run_in_threadpool(processor.process)
+        processed_bytes = proc_result["image_bytes"]
+        conf = proc_result["confidence"]
+        steps = proc_result["steps_applied"]
+        duration = proc_result["duration_ms"]
+        resize_results = proc_result.get("resize_results")
+        
+        # Handle multiple marketplace outputs
+        if resize_results and len(resize_results) > 0:
+            outputs = []
+            for res in resize_results:
+                img_data = res.get("image_bytes")
+                if isinstance(img_data, np.ndarray):
+                    success, encoded = cv2.imencode(".jpg", img_data)
+                    img_data = encoded.tobytes()
+                
+                marketplace_filename = f"processed/{current_user.id}/{image_id}_{res['id']}.jpg"
+                marketplace_upload = upload_image_to_cloudinary(img_data, marketplace_filename)
+                outputs.append({
+                    "marketplace": res["id"],
+                    "url": marketplace_upload.get("secure_url"),
+                    "width": res["width"],
+                    "height": res["height"]
+                })
+            
+            # Store primary processed URL as first marketplace image
+            img_record.processed_url = outputs[0]["url"] if outputs else None
+            img_record.confidence_scores = conf
+            img_record.applied_steps = steps
+            img_record.processing_time_ms = duration
+            img_record.processing_status = "completed"
+            await db.commit()
+            await db.refresh(img_record)
+            
+            # Return multiple outputs
+            return {
+                "status": "completed",
+                "outputs": outputs,
+                "original_image_id": image_id,
+                "telemetry": {"confidence": conf, "steps": steps, "time_ms": duration}
+            }
+        else:
+            # Single output (original behavior)
+            filename = f"processed/{img_record.user_id}/{image_id}.jpg"
+            upload_res = upload_image_to_cloudinary(processed_bytes, filename)
+            img_record.processed_url = upload_res.get("secure_url")
+            img_record.confidence_scores = conf
+            img_record.applied_steps = steps
+            img_record.processing_time_ms = duration
+            img_record.processing_status = "completed"
+            await db.commit()
+            await db.refresh(img_record)
+            
+            # Stats update (unchanged)
+            try:
+                from app.db.session import AsyncSessionLocal
+                async with AsyncSessionLocal() as stats_db:
+                    if steps:
+                        for step in steps:
+                            await update_processing_stats(stats_db, current_user.id, client_id, step, duration)
+                            await stats_db.commit()
+                    await stats_db.commit()
+            except Exception as e:
+                print(f"❌ Stats update failed (non-critical): {e}")
+            
+            return {
+                "status": "completed",
+                "url": img_record.processed_url,
+                "name": img_record.name,
+                "telemetry": {"confidence": conf, "steps": steps, "time_ms": duration}
+            }
+            
     except Exception as e:
         img_record.processing_status = "failed"
         await db.commit()
