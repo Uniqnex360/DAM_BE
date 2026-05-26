@@ -50,6 +50,25 @@ class ImageProcessor:
             return results
         else:
             return self._apply_single_resize(self.img, self.resize_dims)
+    # In image_processor.py
+    def check_watermark_compliance(self, marketplace_id: str, confidence: float):
+        policies = {
+            "amazon-us": "reject", "amazon-uk": "reject",
+            "walmart": "reject", "wayfair-us": "review", "wayfair-uk": "review",
+            "ebay-us": "allowed", "ebay-uk": "allowed",
+            "target-plus": "reject", "tiktok-shop": "reject", "homedepot": "reject"
+        }
+        
+        policy = policies.get(marketplace_id, "reject")
+        
+        if policy == "reject" and confidence >= CONFIDENCE_THRESHOLD:
+            return {"compliant": False, "action": "block", "message": "Watermarks not allowed"}
+        elif policy == "review" and confidence >= CONFIDENCE_THRESHOLD:
+            return {"compliant": False, "action": "flag", "message": "Manual review required"}
+        elif policy == "allowed":
+            return {"compliant": True, "action": "allow", "message": "Watermark allowed"}
+        
+        return {"compliant": True, "action": "allow", "message": "No watermark detected"}
     def _apply_single_resize(self, img, resize_config):
         target_w = resize_config.get("width")
         target_h = resize_config.get("height")
@@ -137,17 +156,113 @@ class ImageProcessor:
             logger.error(f"BG removal failed: {e}")
             raise e
     def remove_shadow(self):
+        """Hybrid approach - smart fallback"""
+        try:
+            # Try AI background removal first
+            img_rgb = cv2.cvtColor(self.original_img, cv2.COLOR_BGR2RGB)
+            pil_img = Image.fromarray(img_rgb)
+            
+            remover = get_remover()
+            cutout = remover.process(pil_img)
+            
+            if cutout.mode != 'RGBA':
+                # Fallback: traditional shadow removal (no AI)
+                self._traditional_shadow_removal()
+                return
+            
+            # Check AI quality - if alpha mask too noisy, fall back
+            alpha = np.array(cutout.split()[3])
+            edge_quality = self._check_alpha_quality(alpha)
+            
+            if edge_quality < 0.7:  # Threshold for "good enough"
+                logger.warning("AI cutout quality low, using traditional method")
+                self._traditional_shadow_removal()
+                return
+            
+            # AI quality good - proceed with alpha compositing
+            rgba_array = np.array(cutout)
+            alpha_float = alpha.astype(np.float32) / 255.0
+            alpha_3ch = np.stack([alpha_float, alpha_float, alpha_float], axis=2)
+            
+            rgb = rgba_array[:, :, :3].astype(np.float32)
+            white = np.ones_like(rgb) * 255.0
+            
+            result = (alpha_3ch * rgb) + ((1 - alpha_3ch) * white)
+            self.img = np.clip(result, 0, 255).astype(np.uint8)
+            
+            # Color correction
+            original_bgr = self.original_img
+            result_bgr = cv2.cvtColor(self.img, cv2.COLOR_RGB2BGR)
+            product_mask = alpha_float > 0.3
+            
+            if np.any(product_mask):
+                orig_mean = cv2.mean(original_bgr, mask=product_mask.astype(np.uint8))[:3]
+                result_mean = cv2.mean(result_bgr, mask=product_mask.astype(np.uint8))[:3]
+                shift = np.array(orig_mean) - np.array(result_mean)
+                
+                corrected = result_bgr.copy()
+                for c in range(3):
+                    corrected[:, :, c] = np.where(
+                        product_mask,
+                        np.clip(result_bgr[:, :, c] + shift[c], 0, 255),
+                        result_bgr[:, :, c]
+                    )
+                self.img = corrected
+            else:
+                self.img = result_bgr
+            
+            # Final cleanup
+            gray = cv2.cvtColor(self.img, cv2.COLOR_BGR2GRAY)
+            near_white = gray > 250
+            was_background = alpha_float < 0.05
+            safe_to_clean = near_white & was_background
+            self.img[safe_to_clean] = [255, 255, 255]
+            
+            logger.info("AI shadow removal complete")
+            
+        except Exception as e:
+            logger.error(f"AI shadow removal failed: {e}, falling back to traditional")
+            self._traditional_shadow_removal()
+
+    def _check_alpha_quality(self, alpha: np.ndarray) -> float:
+        """Score alpha mask quality (0-1)"""
+        # Check for clean edges vs jagged/noisy
+        edges = cv2.Canny(alpha, 50, 150)
+        edge_ratio = np.sum(edges > 0) / alpha.size
+        
+        # Check for reasonable object-to-background ratio
+        foreground_ratio = np.sum(alpha > 128) / alpha.size
+        
+        # Good cutout: moderate edges, reasonable FG ratio
+        if edge_ratio > 0.15:  # Too jagged
+            return 0.3
+        if foreground_ratio < 0.05 or foreground_ratio > 0.95:  # Too small/large
+            return 0.4
+        
+        return 0.9  # Looks good
+
+    def _traditional_shadow_removal(self):
+        """Non-AI shadow fix for when AI fails"""
+        # LAB color space approach
+        lab = cv2.cvtColor(self.img, cv2.COLOR_BGR2LAB)
+        l, a, b = cv2.split(lab)
+        
+        # CLAHE on L channel
+        clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8,8))
+        l = clahe.apply(l)
+        
+        # Merge back
+        self.img = cv2.cvtColor(cv2.merge([l, a, b]), cv2.COLOR_LAB2BGR)
+        
+        # Detect and whiten background (conservative)
         hsv = cv2.cvtColor(self.img, cv2.COLOR_BGR2HSV)
-        v = hsv[:, :, 2]
-        mean_v = np.mean(v)
-        shadow_mask = v < (0.4 * mean_v)
-        shadow_mask = cv2.morphologyEx(
-            shadow_mask.astype(np.uint8) * 255,
-            cv2.MORPH_DILATE,
-            np.ones((5, 5), np.uint8)
-        )
-        self.img[shadow_mask > 0] = cv2.add(
-            self.img[shadow_mask > 0], np.array([25, 25, 25]))
+        h, s, v = cv2.split(hsv)
+        
+        # Only whiten low-saturation, high-value areas (likely background)
+        bg_mask = (s < 20) & (v > 230)
+        self.img[bg_mask] = [255, 255, 255]
+        
+        logger.info("Traditional shadow removal complete")
     def remove_watermark(self):
         gray = cv2.cvtColor(self.img, cv2.COLOR_BGR2GRAY)
         _, mask = cv2.threshold(gray, 220, 255, cv2.THRESH_BINARY_INV)
@@ -209,7 +324,7 @@ class ImageProcessor:
                 steps_applied.append("resize")
         else:
             logger.info(f"User-selection mode: {self.operations}")
-            if "shadow_fix" in self.operations or "shadow" in self.operations:
+            if any(op in self.operations for op in ["shadow-remove", "shadow_fix", "shadow"]):
                 self.remove_shadow()
                 steps_applied.append("shadow_fix")
             if "watermark_removal" in self.operations or "watermark" in self.operations:

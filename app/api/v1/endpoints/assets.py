@@ -5,6 +5,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import selectinload
 import uuid
 import requests
+import asyncio
 import os
 import cv2
 import numpy as np 
@@ -19,6 +20,10 @@ from app.schemas.asset import BatchUploadResponse, ImageResponse
 from app.schemas.analysis import AnalyzeRequest, AnalyzeResponse
 from app.services.statistics import update_processing_stats
 from app.models.project import Project
+import traceback
+import logging
+
+logger = logging.getLogger("assets")
 router = APIRouter()
 
 
@@ -115,6 +120,9 @@ async def upload_asset(
         print(f"❌ Upload stats failed (non-critical): {e}")
     return {"upload_id": str(upload_record.id), "images": results, "status": "uploaded"}
 
+PROCESSING_SEMAPHORE = asyncio.Semaphore(
+    int(os.getenv("MAX_CONCURRENT_PROCESSING", "2"))  # Never >4 on CPU
+)
 
 @router.post("/{image_id}/process")
 async def process_image_asset(
@@ -128,139 +136,111 @@ async def process_image_asset(
     print(f"DEBUG: operations={operations}")
     print(f"DEBUG: options={options}")
     print(f"DEBUG: options type={type(options)}")
-    result = await db.execute(select(Image).where(Image.id == image_id))
-    img_record = result.scalars().first()
-    if not img_record:
-        raise HTTPException(status_code=404, detail="Image not found")
-    client_id = current_user.profile.client_id if current_user.profile else None
-    img_record.processing_status = "processing"
-    await db.commit()
-    try:
-        image_content = None
-        if "localhost" in img_record.url and "static/uploads" in img_record.url:
-            filename = img_record.url.split("/")[-1]
-            local_path = f"static/uploads/{filename}"
-            if os.path.exists(local_path):
-                with open(local_path, "rb") as f:
-                    image_content = f.read()
-        if not image_content:
-            image_content = await run_in_threadpool(lambda: requests.get(img_record.url).content)
-        resize_dims = options.get("resize") if options.get("resize") else None
-        processor = ImageProcessor(
-            image_content, resize_dims=resize_dims, operations=operations, autoDetect=autoDetect)
-    #     # processed_bytes, conf, steps, duration = await run_in_threadpool(processor.process)
-    #     filename = f"processed/{img_record.user_id}/{image_id}.jpg"
-    #     upload_res = upload_image_to_cloudinary(processed_bytes, filename)
-    #     img_record.processed_url = upload_res.get("secure_url")
-    #     img_record.confidence_scores = conf
-    #     img_record.applied_steps = steps
-    #     img_record.processing_time_ms = duration
-    #     img_record.processing_status = "completed"
-    #     await db.commit()
-    #     await db.refresh(img_record)
-    #     print(f"🔥 DEBUG: Preparing to update stats. steps={steps}")
-    #     try:
-    #         from app.db.session import AsyncSessionLocal
-    #         async with AsyncSessionLocal() as stats_db:
-    #             if steps:
-    #                 for step in steps:
-    #                     print(f"🔥 DEBUG: Updating stats for step: {step}")
-    #                     await update_processing_stats(stats_db, current_user.id, client_id, step, duration)
-    #                     await stats_db.commit()
-    #                     print("🔥 DEBUG: Stats committed successfully")
-    #             else:
-    #                 print("🔥 DEBUG: No operations applied, skipping stats update")
-    #             await stats_db.commit()
-    #             print("🔥 DEBUG: Stats committed successfully")
-    #     except Exception as e:
-    #         print(f"❌ Stats update failed (non-critical): {e}")
-    #         await db.rollback()
-    #     return {
-    #         "status": "completed",
-    #         "url": img_record.processed_url,
-    #         "name": img_record.name,
-    #         "telemetry": {"confidence": conf, "steps": steps, "time_ms": duration}
-    #     }
-    # except Exception as e:
-    #     img_record.processing_status = "failed"
-    #     await db.commit()
-    #     raise HTTPException(status_code=500, detail=str(e))
-        proc_result = await run_in_threadpool(processor.process)
-        processed_bytes = proc_result["image_bytes"]
-        conf = proc_result["confidence"]
-        steps = proc_result["steps_applied"]
-        duration = proc_result["duration_ms"]
-        resize_results = proc_result.get("resize_results")
-        
-        # Handle multiple marketplace outputs
-        if resize_results and len(resize_results) > 0:
-            outputs = []
-            for res in resize_results:
-                img_data = res.get("image_bytes")
-                if isinstance(img_data, np.ndarray):
-                    success, encoded = cv2.imencode(".jpg", img_data)
-                    img_data = encoded.tobytes()
-                
-                marketplace_filename = f"processed/{current_user.id}/{image_id}_{res['id']}.jpg"
-                marketplace_upload = upload_image_to_cloudinary(img_data, marketplace_filename)
-                outputs.append({
-                    "marketplace": res["id"],
-                    "url": marketplace_upload.get("secure_url"),
-                    "width": res["width"],
-                    "height": res["height"]
-                })
-            
-            # Store primary processed URL as first marketplace image
-            img_record.processed_url = outputs[0]["url"] if outputs else None
-            img_record.confidence_scores = conf
-            img_record.applied_steps = steps
-            img_record.processing_time_ms = duration
-            img_record.processing_status = "completed"
-            await db.commit()
-            await db.refresh(img_record)
-            
-            # Return multiple outputs
-            return {
-                "status": "completed",
-                "outputs": outputs,
-                "original_image_id": image_id,
-                "telemetry": {"confidence": conf, "steps": steps, "time_ms": duration}
-            }
-        else:
-            # Single output (original behavior)
-            filename = f"processed/{img_record.user_id}/{image_id}.jpg"
-            upload_res = upload_image_to_cloudinary(processed_bytes, filename)
-            img_record.processed_url = upload_res.get("secure_url")
-            img_record.confidence_scores = conf
-            img_record.applied_steps = steps
-            img_record.processing_time_ms = duration
-            img_record.processing_status = "completed"
-            await db.commit()
-            await db.refresh(img_record)
-            
-            # Stats update (unchanged)
-            try:
-                from app.db.session import AsyncSessionLocal
-                async with AsyncSessionLocal() as stats_db:
-                    if steps:
-                        for step in steps:
-                            await update_processing_stats(stats_db, current_user.id, client_id, step, duration)
-                            await stats_db.commit()
-                    await stats_db.commit()
-            except Exception as e:
-                print(f"❌ Stats update failed (non-critical): {e}")
-            
-            return {
-                "status": "completed",
-                "url": img_record.processed_url,
-                "name": img_record.name,
-                "telemetry": {"confidence": conf, "steps": steps, "time_ms": duration}
-            }
-            
-    except Exception as e:
-        img_record.processing_status = "failed"
+    async with PROCESSING_SEMAPHORE:
+        result = await db.execute(select(Image).where(Image.id == image_id))
+        img_record = result.scalars().first()
+        if not img_record:
+            raise HTTPException(status_code=404, detail="Image not found")
+        client_id = current_user.profile.client_id if current_user.profile else None
+        img_record.processing_status = "processing"
         await db.commit()
-        raise HTTPException(status_code=500, detail=str(e))
+        try:
+            image_content = None
+            if "localhost" in img_record.url and "static/uploads" in img_record.url:
+                filename = img_record.url.split("/")[-1]
+                local_path = f"static/uploads/{filename}"
+                if os.path.exists(local_path):
+                    with open(local_path, "rb") as f:
+                        image_content = f.read()
+            if not image_content:
+                image_content = await run_in_threadpool(lambda: requests.get(img_record.url).content)
+            resize_dims = options.get("resize") if options.get("resize") else None
+            processor = ImageProcessor(
+                image_content, resize_dims=resize_dims, operations=operations, autoDetect=autoDetect)
+            proc_result = await asyncio.to_thread(processor.process)
+            processed_bytes = proc_result["image_bytes"]
+            conf = proc_result["confidence"]
+            steps = proc_result["steps_applied"]
+            duration = proc_result["duration_ms"]
+            resize_results = proc_result.get("resize_results")
+            
+            # Handle multiple marketplace outputs
+            if resize_results and len(resize_results) > 0:
+                outputs = []
+                for res in resize_results:
+                    img_data = res.get("image_bytes")
+                    if isinstance(img_data, np.ndarray):
+                        success, encoded = cv2.imencode(".jpg", img_data)
+                        img_data = encoded.tobytes()
+                    
+                    marketplace_filename = f"processed/{current_user.id}/{image_id}_{res['id']}.jpg"
+                    marketplace_upload = upload_image_to_cloudinary(img_data, marketplace_filename)
+                    outputs.append({
+                        "marketplace": res["id"],
+                        "url": marketplace_upload.get("secure_url"),
+                        "width": res["width"],
+                        "height": res["height"]
+                    })
+                
+                # Store primary processed URL as first marketplace image
+                img_record.processed_url = outputs[0]["url"] if outputs else None
+                img_record.confidence_scores = conf
+                img_record.applied_steps = steps
+                img_record.processing_time_ms = duration
+                img_record.processing_status = "completed"
+                await db.commit()
+                await db.refresh(img_record)
+                
+                # Return multiple outputs
+                return {
+                    "status": "completed",
+                    "outputs": outputs,
+                    "original_image_id": image_id,
+                    "telemetry": {"confidence": conf, "steps": steps, "time_ms": duration}
+                }
+            else:
+                # Single output (original behavior)
+                filename = f"processed/{img_record.user_id}/{image_id}.jpg"
+                upload_res = upload_image_to_cloudinary(processed_bytes, filename)
+                img_record.processed_url = upload_res.get("secure_url")
+                img_record.confidence_scores = conf
+                img_record.applied_steps = steps
+                img_record.processing_time_ms = duration
+                img_record.processing_status = "completed"
+                await db.commit()
+                await db.refresh(img_record)
+                
+                # Stats update (unchanged)
+                try:
+                    from app.db.session import AsyncSessionLocal
+                    async with AsyncSessionLocal() as stats_db:
+                        if steps:
+                            for step in steps:
+                                await update_processing_stats(stats_db, current_user.id, client_id, step, duration)
+                                await stats_db.commit()
+                        await stats_db.commit()
+                except Exception as e:
+                    print(f"❌ Stats update failed (non-critical): {e}")
+                
+                return {
+                    "status": "completed",
+                    "url": img_record.processed_url,
+                    "name": img_record.name,
+                    "telemetry": {"confidence": conf, "steps": steps, "time_ms": duration}
+                }
+                
+        except Exception as e:
+            logger.exception("❌ Image processing failed")
+
+            traceback.print_exc()
+
+            img_record.processing_status = "failed"
+            await db.commit()
+
+            raise HTTPException(
+                status_code=500,
+                detail=f"Processing failed: {str(e)}"
+            )
 
 @router.get("/gallery")
 async def get_gallery(
