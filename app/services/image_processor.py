@@ -24,7 +24,7 @@ _ocr_reader = None
 def get_ocr_reader():
     global _ocr_reader
     if _ocr_reader is None:
-        _ocr_reader = easyocr.Reader(['en']) # Add more languages if needed
+        _ocr_reader = easyocr.Reader(['en']) 
     return _ocr_reader
 class ImageProcessor:
     def __init__(
@@ -61,15 +61,12 @@ class ImageProcessor:
             f"skip_crop={self.skip_crop}, operations={self.operations}"
         )
     def remove_text(self):
-        """
-        Clean-Room Version: Matches the background color of the specific area 
-        to erase text without creating smudges or banding.
-        """
+        
         try:
             logger.info("Starting clean-room text removal...")
             reader = get_ocr_reader()
             
-            # 1. High-sensitivity detection to catch button text ("Time", "Cancel")
+            
             results = reader.readtext(self.img, text_threshold=0.3, link_threshold=0.2, low_text=0.2)
             
             if not results:
@@ -79,45 +76,45 @@ class ImageProcessor:
             h, w = self.img.shape[:2]
             
             for (bbox, text, prob) in results:
-                # Get coordinates
+                
                 points = np.array(bbox).astype(np.int32)
                 x, y, bw, bh = cv2.boundingRect(points)
                 
-                # Expand box by 2 pixels to ensure we grab the background color
+                
                 x1, y1 = max(0, x-2), max(0, y-2)
                 x2, y2 = min(w, x+bw+2), min(h, y+bh+2)
                 
-                # 2. Sample the background color
-                # We take the median color of the 2-pixel border around the text
+                
+                
                 roi = self.img[y1:y2, x1:x2]
                 
-                # Create a mask for the border
-                border_mask = np.ones(roi.shape[:2], dtype=np.uint8) * 255
-                border_mask[2:-2, 2:-2] = 0 # Mask out the center (where the text is)
                 
-                # Get the median color of the background pixels
+                border_mask = np.ones(roi.shape[:2], dtype=np.uint8) * 255
+                border_mask[2:-2, 2:-2] = 0 
+                
+                
                 bg_color = np.median(roi[border_mask > 0], axis=0)
 
-                # 3. Surgical Masking
-                # Detect the text color vs the sampled background
+                
+                
                 gray_roi = cv2.cvtColor(roi, cv2.COLOR_BGR2GRAY)
                 avg_bg_gray = np.mean(cv2.cvtColor(np.uint8([[bg_color]]), cv2.COLOR_BGR2GRAY))
                 
                 if avg_bg_gray > 127:
-                    # Light background (Walmart text)
+                    
                     _, text_mask = cv2.threshold(gray_roi, avg_bg_gray - 30, 255, cv2.THRESH_BINARY_INV)
                 else:
-                    # Dark background (Air Fryer buttons)
+                    
                     _, text_mask = cv2.threshold(gray_roi, avg_bg_gray + 30, 255, cv2.THRESH_BINARY)
 
-                # 4. Fill and Blend
-                # Dilate the text mask to catch font edges
+                
+                
                 text_mask = cv2.dilate(text_mask, np.ones((3,3), np.uint8), iterations=1)
                 
-                # Fill the text shape with the sampled background color
+                
                 roi[text_mask > 0] = bg_color
                 
-                # Apply a very subtle blur only to the patched area to hide edges
+                
                 roi_refined = cv2.GaussianBlur(roi, (3,3), 0)
                 mask_feather = cv2.GaussianBlur(text_mask, (5,5), 0).astype(np.float32) / 255.0
                 
@@ -132,21 +129,18 @@ class ImageProcessor:
             logger.error(f"Text removal failed: {e}")
 
     def _detect_corner_logos(self, mask):
-        """
-        Detects high-contrast logos/graphics in image corners
-        that EasyOCR might miss (like the Walmart spark).
-        """
+        
         h, w = self.img.shape[:2]
         gray = cv2.cvtColor(self.img, cv2.COLOR_BGR2GRAY)
         
-        # Define corner regions (top-left, top-right, bottom-left, bottom-right)
-        corner_size = int(min(h, w) * 0.25)  # 25% of image
+        
+        corner_size = int(min(h, w) * 0.25)  
         
         corners = [
-            gray[0:corner_size, 0:corner_size],                    # top-left
-            gray[0:corner_size, w-corner_size:w],                   # top-right
-            gray[h-corner_size:h, 0:corner_size],                    # bottom-left
-            gray[h-corner_size:h, w-corner_size:w],                  # bottom-right
+            gray[0:corner_size, 0:corner_size],                    
+            gray[0:corner_size, w-corner_size:w],                   
+            gray[h-corner_size:h, 0:corner_size],                    
+            gray[h-corner_size:h, w-corner_size:w],                  
         ]
         
         corner_positions = [
@@ -157,25 +151,25 @@ class ImageProcessor:
         ]
         
         for corner_img, (y1, x1, y2, x2) in zip(corners, corner_positions):
-            # Find non-white, non-background regions (logos)
+            
             _, thresh = cv2.threshold(corner_img, 200, 255, cv2.THRESH_BINARY_INV)
             
-            # Only process if there's a significant colored region (> 1% of corner)
+            
             colored_ratio = np.sum(thresh > 0) / thresh.size
             if colored_ratio > 0.01 and colored_ratio < 0.3:
-                # This corner likely has a logo (not just solid background)
-                # Find contours of the logo
+                
+                
                 contours, _ = cv2.findContours(thresh, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
                 
                 for c in contours:
                     area = cv2.contourArea(c)
                     if area > (corner_img.shape[0] * corner_img.shape[1] * 0.005):
-                        # Offset contour coordinates to full image space
+                        
                         offset_contour = c.copy()
                         offset_contour[:, :, 0] += x1
                         offset_contour[:, :, 1] += y1
                         
-                        # Add padding
+                        
                         x, y, cw, ch = cv2.boundingRect(offset_contour)
                         pad = 10
                         cv2.rectangle(mask, 
@@ -210,7 +204,7 @@ class ImageProcessor:
         h, w = img.shape[:2]  
         scale = min(target_w / w, target_h / h)
         new_w, new_h = int(w * scale), int(h * scale)
-        # Professional Lanczos Resizing
+        
         pil = Image.fromarray(cv2.cvtColor(img, cv2.COLOR_BGR2RGB))  
         pil = pil.resize((new_w, new_h), Image.LANCZOS)
         canvas = Image.new("RGB", (target_w, target_h), (255, 255, 255))
@@ -240,7 +234,7 @@ class ImageProcessor:
         corner_std = np.mean([np.std(gray[:80, :80]), np.std(gray[:80, -80:])])
         conf["bg_clean"] = np.clip((corner_std - 10) / 20, 0, 1)
         
-        # Shadow detection
+        
         v = hsv[:, :, 2]
         mean_v = np.mean(v) if np.mean(v) > 0 else 1
         shadow_mask = (v < 0.35 * mean_v) & (fg > 0)
@@ -287,12 +281,12 @@ class ImageProcessor:
             self.img = np.clip(result, 0, 255).astype(np.uint8)
             result_bgr = cv2.cvtColor(self.img, cv2.COLOR_RGB2BGR)
             
-            # Match original color tones
+            
             product_mask = alpha_float > 0.3
             if np.any(product_mask):
                 orig_mean = cv2.mean(self.original_img, mask=product_mask.astype(np.uint8))[:3]
                 res_mean = cv2.mean(result_bgr, mask=product_mask.astype(np.uint8))[:3]
-                shift = np.array(orig_mean) - np.array(result_mean)
+                shift = np.array(orig_mean) - np.array(res_mean)
                 for c in range(3):
                     result_bgr[:, :, c] = np.where(product_mask, np.clip(result_bgr[:, :, c] + shift[c], 0, 255), result_bgr[:, :, c])
             
@@ -350,26 +344,26 @@ class ImageProcessor:
 
     def _retouch_product(self):
         logger.info("Applying PRO-WEBSITE clarity retouch")
-        # 1. Intelligent Denoise
+        
         self.img = cv2.edgePreservingFilter(self.img, flags=1, sigma_s=30, sigma_r=0.4)
-        # 2. LAB Sharpening (Luminance Only)
+        
         lab = cv2.cvtColor(self.img, cv2.COLOR_BGR2LAB)
         l, a, b = cv2.split(lab)
         clahe = cv2.createCLAHE(clipLimit=2.5, tileGridSize=(8, 8))
         l = clahe.apply(l)
-        # 3. High Pass Clarity
+        
         l_float = l.astype(np.float32)
         blur = cv2.GaussianBlur(l_float, (0, 0), 3.0)
         high_pass = l_float - blur
         l = np.clip(l_float + (high_pass * 1.4), 0, 255).astype(np.uint8)
-        # 4. Final Detail recover
+        
         gauss_fine = cv2.GaussianBlur(l, (0, 0), 0.8)
         l = cv2.addWeighted(l, 1.5, gauss_fine, -0.5, 0)
         self.img = cv2.cvtColor(cv2.merge([l, a, b]), cv2.COLOR_LAB2BGR)
-        # 5. Crisp Kernel
+        
         kernel = np.array([[-1,-1,-1], [-1, 9,-1], [-1,-1,-1]]) * 0.03
         self.img = cv2.addWeighted(self.img, 1.0, cv2.filter2D(self.img, -1, kernel), 1.0, 0)
-        # 6. Color Pop
+        
         hsv = cv2.cvtColor(self.img, cv2.COLOR_BGR2HSV).astype(np.float32)
         hsv[:, :, 1] *= 1.10 
         self.img = cv2.cvtColor(np.clip(hsv, 0, 255).astype(np.uint8), cv2.COLOR_HSV2BGR)
@@ -435,7 +429,7 @@ class ImageProcessor:
                     self.img = result
                     steps_applied.append("resize")
 
-        # Final target dimension safety check
+        
         if self.resize_results is None and "resize" not in steps_applied:
             cur_h, cur_w = self.img.shape[:2]
             if (cur_w, cur_h) != (self.target_w, self.target_h):
