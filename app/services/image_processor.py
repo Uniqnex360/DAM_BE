@@ -7,6 +7,9 @@ import logging
 from typing import Tuple, Dict, List
 from transparent_background import Remover
 import easyocr 
+from rembg import remove, new_session
+rembg_session = new_session("isnet-general-use")
+
 logger = logging.getLogger(__name__)
 TARGET_SIZE = (2000, 2000)
 CONFIDENCE_THRESHOLD = 0.6
@@ -258,43 +261,44 @@ class ImageProcessor:
         except Exception as e:
             logger.error(f"BG removal failed: {e}")
 
+    
+
     def remove_shadow(self):
         try:
-            img_rgb = cv2.cvtColor(self.original_img, cv2.COLOR_BGR2RGB)
-            pil_img = Image.fromarray(img_rgb)
-            remover = get_remover()
-            cutout = remover.process(pil_img)
-            if cutout.mode != 'RGBA':
-                self._traditional_shadow_removal()
-                return
-            
-            alpha = np.array(cutout.split()[3])
-            self.last_ai_alpha = alpha.copy()
-            
-            rgba_array = np.array(cutout)
-            alpha_float = alpha.astype(np.float32) / 255.0
-            alpha_3ch = np.stack([alpha_float] * 3, axis=2)
-            rgb = rgba_array[:, :, :3].astype(np.float32)
-            white = np.ones_like(rgb) * 255.0
-            result = (alpha_3ch * rgb) + ((1 - alpha_3ch) * white)
-            
-            self.img = np.clip(result, 0, 255).astype(np.uint8)
-            result_bgr = cv2.cvtColor(self.img, cv2.COLOR_RGB2BGR)
-            
-            
-            product_mask = alpha_float > 0.3
-            if np.any(product_mask):
-                orig_mean = cv2.mean(self.original_img, mask=product_mask.astype(np.uint8))[:3]
-                res_mean = cv2.mean(result_bgr, mask=product_mask.astype(np.uint8))[:3]
-                shift = np.array(orig_mean) - np.array(res_mean)
-                for c in range(3):
-                    result_bgr[:, :, c] = np.where(product_mask, np.clip(result_bgr[:, :, c] + shift[c], 0, 255), result_bgr[:, :, c])
-            
-            self.img = result_bgr
-            self._cleanup_internal_holes()
-            logger.info("AI shadow removal complete")
+            logger.info("Starting ISNet shadow removal...")
+
+            max_dim = 2000
+            h, w = self.original_img.shape[:2]
+            if max(h, w) > max_dim:
+                scale = max_dim / max(h, w)
+                self.original_img = cv2.resize(
+                    self.original_img,
+                    (int(w * scale), int(h * scale))
+                )
+
+            success, buffer = cv2.imencode(".png", self.original_img)
+            if not success:
+                raise ValueError("Failed to encode image")
+
+            input_bytes = buffer.tobytes()
+
+            output_bytes = remove(
+                input_bytes,
+                session=rembg_session
+            )
+
+            pil_img = Image.open(io.BytesIO(output_bytes)).convert("RGBA")
+
+            # ✅ Proper color-safe blending
+            bg = Image.new("RGB", pil_img.size, (255, 255, 255))
+            bg.paste(pil_img, mask=pil_img.split()[3])
+
+            self.img = cv2.cvtColor(np.array(bg), cv2.COLOR_RGB2BGR)
+
+            logger.info("ISNet shadow removal complete ✅")
+
         except Exception as e:
-            logger.error(f"Shadow removal failed: {e}")
+            logger.error(f"ISNet shadow removal failed: {e}")
             self._traditional_shadow_removal()
 
     def _cleanup_internal_holes(self):
@@ -309,11 +313,17 @@ class ImageProcessor:
         color_mask = cv2.inRange(hsv_orig, lower_bg, upper_bg)
 
         if self.last_ai_alpha is not None:
-            uncertain_area = (self.last_ai_alpha < 200).astype(np.uint8) * 255
+            uncertain_area = np.zeros_like(self.last_ai_alpha, dtype=np.uint8)
+            uncertain_area[(self.last_ai_alpha < 100) & (self.last_ai_alpha > 20)] = 255
             final_mask = cv2.bitwise_and(color_mask, uncertain_area)
         else:
             final_mask = color_mask
-
+        edges = cv2.Canny(
+        cv2.cvtColor(self.original_img, cv2.COLOR_BGR2GRAY),
+        30, 100
+        )
+        edge_protection = cv2.dilate(edges, np.ones((7,7), np.uint8), iterations=2)
+        final_mask = cv2.bitwise_and(final_mask, cv2.bitwise_not(edge_protection))
         self.img[final_mask > 0] = [255, 255, 255]
 
     def _traditional_shadow_removal(self):
