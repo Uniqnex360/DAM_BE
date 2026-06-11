@@ -75,10 +75,13 @@ async def upload_asset(
         if file.content_type not in ["image/jpeg", "image/png", "image/webp", "application/pdf",'image/avif']:
             raise HTTPException(
                 status_code=400, detail=f"Invalid file type: {file.filename}")
+        image_metadata = {}
+
         crop_info = crop_map.get(file.filename)
+
         if crop_info:
             image_metadata["crop_mode"] = crop_info.get(
-                "cropMode")                 # "free" or "preset"
+                "cropMode")                 
             image_metadata["target_aspect_ratio"] = crop_info.get("targetAspectRatio")
     upload_record = Upload(
         user_id=current_user.id,
@@ -99,7 +102,6 @@ async def upload_asset(
             file_content = await file.read()
             result = upload_image_to_cloudinary(file_content, unique_filename)
             original_dims = dimensions_map.get(file.filename)
-            image_metadata = {}
             if original_dims:
                 image_metadata["original_dimensions"] = original_dims
                 logger.info(
@@ -201,7 +203,7 @@ async def process_image_asset(
                         f"Crop mode: {crop_mode}, target aspect ratio: {target_aspect_ratio}")
 
             
-            skip_crop = False
+            # skip_crop = False
             processor = ImageProcessor(
                 image_content,
                 resize_dims=resize_dims,
