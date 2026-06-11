@@ -71,19 +71,7 @@ async def upload_asset(
     crop_list = json.loads(crop_settings) if crop_settings else []
     crop_map = {item["filename"]: item for item in crop_list}
 
-    for file in files:
-        if file.content_type not in ["image/jpeg", "image/png", "image/webp", "application/pdf", 'image/avif']:
-            raise HTTPException(
-                status_code=400, detail=f"Invalid file type: {file.filename}")
-        image_metadata = {}
-
-        crop_info = crop_map.get(file.filename)
-
-        if crop_info:
-            image_metadata["crop_mode"] = crop_info.get(
-                "cropMode")
-            image_metadata["target_aspect_ratio"] = crop_info.get(
-                "targetAspectRatio")
+    # Create upload record FIRST
     upload_record = Upload(
         user_id=current_user.id,
         status="uploaded",
@@ -93,20 +81,43 @@ async def upload_asset(
     db.add(upload_record)
     await db.commit()
     await db.refresh(upload_record)
+
     successful_uploads = 0
     results = []
+
+    # SINGLE LOOP - validation, metadata, and upload all together
     for file in files:
+        # Validate file type
+        if file.content_type not in ["image/jpeg", "image/png", "image/webp", "application/pdf", 'image/avif']:
+            raise HTTPException(
+                status_code=400, detail=f"Invalid file type: {file.filename}")
+
         try:
+            # ✅ CREATE FRESH METADATA FOR EACH FILE
+            image_metadata = {}
+
+            # ✅ ADD CROP SETTINGS (if any)
+            crop_info = crop_map.get(file.filename)
+            if crop_info:
+                image_metadata["crop_mode"] = crop_info.get("cropMode")
+                image_metadata["target_aspect_ratio"] = crop_info.get(
+                    "targetAspectRatio")
+
+            # Upload file
             file_ext = file.filename.rsplit(
                 '.', 1)[-1] if '.' in file.filename else 'jpg'
             unique_filename = f"{current_user.id}/{uuid.uuid4()}.{file_ext}"
             file_content = await file.read()
             result = upload_image_to_cloudinary(file_content, unique_filename)
+
+            # Add original dimensions if present
             original_dims = dimensions_map.get(file.filename)
             if original_dims:
                 image_metadata["original_dimensions"] = original_dims
                 logger.info(
                     f"Storing original dims for {file.filename}: {original_dims}")
+
+            # Create image record
             new_image = Image(
                 upload_id=upload_record.id,
                 user_id=current_user.id,
@@ -122,6 +133,7 @@ async def upload_asset(
             db.add(new_image)
             await db.commit()
             await db.refresh(new_image)
+
             results.append({
                 "id": str(new_image.id),
                 "name": new_image.name,
@@ -131,21 +143,26 @@ async def upload_asset(
                 "original_dimensions": original_dims
             })
             successful_uploads += 1
+
         except Exception as e:
             print(f"Failed to upload {file.filename}: {e}")
             continue
+
     if not results:
         await db.rollback()
         raise HTTPException(status_code=500, detail="All uploads failed")
+
+    # Update stats (rest remains the same)
     try:
         from app.db.session import AsyncSessionLocal
         async with AsyncSessionLocal() as stats_db:
             for _ in range(successful_uploads):
                 await update_processing_stats(stats_db, current_user.id, "upload", 0)
             await stats_db.commit()
-            print(f" DEBUG: Recorded {successful_uploads} uploads")
+            print(f"🔥 DEBUG: Recorded {successful_uploads} uploads")
     except Exception as e:
-        print(f" Upload stats failed (non-critical): {e}")
+        print(f"❌ Upload stats failed (non-critical): {e}")
+
     return {"upload_id": str(upload_record.id), "images": results, "status": "uploaded"}
 PROCESSING_SEMAPHORE = asyncio.Semaphore(
     int(os.getenv("MAX_CONCURRENT_PROCESSING", "2"))
