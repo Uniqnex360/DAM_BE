@@ -3,9 +3,8 @@ from sqlalchemy.dialects.postgresql import UUID, JSONB
 from sqlalchemy.orm import relationship
 from sqlalchemy import text
 from .base import Base
-from .mixins import UserOwnedMixin, ClientOwnedMixin
 
-class Project(Base, UserOwnedMixin, ClientOwnedMixin):
+class Project(Base):
     __tablename__ = "projects"
     
     name = Column(String, nullable=False, index=True)
