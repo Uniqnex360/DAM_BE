@@ -245,7 +245,7 @@ async def process_image_asset(
                 async with AsyncSessionLocal() as stats_db:
                     if steps:
                         for step in steps:
-                            await update_processing_stats(stats_db, current_user.id, client_id, step, duration)
+                            await update_processing_stats(stats_db, current_user.id, step, duration)
                     await stats_db.commit()
             except Exception as e:
                 print(f" Stats update failed: {e}")
