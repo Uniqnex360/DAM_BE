@@ -128,9 +128,8 @@ async def upload_asset(
     try:
         from app.db.session import AsyncSessionLocal
         async with AsyncSessionLocal() as stats_db:
-            client_id = current_user.profile.client_id if current_user.profile else None
             for _ in range(successful_uploads):
-                await update_processing_stats(stats_db, current_user.id, client_id, "upload", 0)
+                await update_processing_stats(stats_db, current_user.id, "upload", 0)
             await stats_db.commit()
             print(f"🔥 DEBUG: Recorded {successful_uploads} uploads")
     except Exception as e:
@@ -158,7 +157,6 @@ async def process_image_asset(
         img_record = result.scalars().first()
         if not img_record:
             raise HTTPException(status_code=404, detail="Image not found")
-        client_id = current_user.profile.client_id if current_user.profile else None
         img_record.processing_status = "processing"
         parent_res = await db.execute(select(Upload).where(Upload.id == img_record.upload_id))
         parent_upload = parent_res.scalars().first()

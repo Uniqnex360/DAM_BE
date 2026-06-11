@@ -10,7 +10,6 @@ logger = logging.getLogger(__name__)
 async def update_processing_stats(
     db: AsyncSession,
     user_id: str,
-    client_id: Optional[uuid.UUID],
     operation: str,
     processing_time_ms: int
 ):
@@ -27,7 +26,6 @@ async def update_processing_stats(
             print("🔥 DEBUG: Creating new stats record for today")
             stats = ProcessingStatistic(
                 user_id=user_id,
-                client_id=client_id,
                 operation_counts={},
                 daily_breakdown={},
                 total_images_uploaded=0,

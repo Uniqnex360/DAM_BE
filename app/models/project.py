@@ -6,7 +6,7 @@ from .base import Base
 
 class Project(Base):
     __tablename__ = "projects"
-    
+    user_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True)
     name = Column(String, nullable=False, index=True)
     description = Column(Text)
     status = Column(String, server_default="active") 
