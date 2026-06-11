@@ -20,7 +20,7 @@ rembg_session = new_session("isnet-general-use")
 # )
 from iopaint.model_manager import ModelManager
 from iopaint.schema import InpaintRequest, HDStrategy
-
+from typing import Optional
 from simple_lama_inpainting import SimpleLama
 
 _lama = None
@@ -88,6 +88,8 @@ class ImageProcessor:
         operations: list = None,
         autoDetect: bool = False,
         skip_crop: bool = False,
+        crop_mode: Optional[str] = None,         
+        target_aspect_ratio: Optional[str] = None,
         target_dimensions: dict = None
     ):
         nparr = np.frombuffer(file_bytes, np.uint8)
@@ -100,6 +102,8 @@ class ImageProcessor:
         self.original_img = self.img.copy()
         self.auto_detect = autoDetect
         self.skip_crop = skip_crop
+        self.crop_mode = crop_mode
+        self.target_aspect_ratio = target_aspect_ratio
         self.last_ai_alpha = None 
         
         if target_dimensions:
@@ -114,6 +118,21 @@ class ImageProcessor:
             f"target={self.target_w}x{self.target_h}, "
             f"skip_crop={self.skip_crop}, operations={self.operations}"
         )
+
+    def crop_to_aspect_ratio(self, ratio_str: str):
+        h, w = self.img.shape[:2]
+        ratio_w, ratio_h = map(int, ratio_str.split(':'))
+        target_ratio = ratio_w / ratio_h
+        current_ratio = w / h
+
+        if current_ratio > target_ratio:
+            new_w = int(h * target_ratio)
+            offset = (w - new_w) // 2
+            self.img = self.img[:, offset:offset + new_w]
+        else:
+            new_h = int(w / target_ratio)
+            offset = (h - new_h) // 2
+            self.img = self.img[offset:offset + new_h, :]
     def remove_text(self):
         
         try:
@@ -615,7 +634,8 @@ class ImageProcessor:
         self.resize_results = None
         steps_applied = []
         confidence = self.analyze()
-        
+        if self.crop_mode == "preset" and self.target_aspect_ratio:
+            self.crop_to_aspect_ratio(self.target_aspect_ratio)
         if self.auto_detect:
             if confidence["bg_clean"] > CONFIDENCE_THRESHOLD:
                 self.clean_background()
@@ -649,11 +669,10 @@ class ImageProcessor:
 
         
         if self.resize_results is None and "resize" not in steps_applied:
-            cur_h, cur_w = self.img.shape[:2]
-            if not self.skip_crop:
+            if self.crop_mode != "preset":
+                cur_h, cur_w = self.img.shape[:2]
                 if (cur_w, cur_h) != (self.target_w, self.target_h):
-                    self.img = self._upscale_to_size(
-                        self.img, self.target_w, self.target_h)
+                    self.img = self._upscale_to_size(self.img, self.target_w, self.target_h)
 
         success, encoded = cv2.imencode(".jpg", self.img, [cv2.IMWRITE_JPEG_QUALITY, 95])
         return {
