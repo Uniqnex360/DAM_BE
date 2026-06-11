@@ -26,7 +26,6 @@ class ProcessingStatistic(Base):
     __tablename__ = "processing_statistics"
     
     user_id = Column(UUID(as_uuid=True), ForeignKey("users.id"))
-    client_id = Column(UUID(as_uuid=True), ForeignKey("clients.id"))
     date = Column(DateTime(timezone=True), server_default=func.now())
     total_images_uploaded = Column(Integer, default=0)
     total_images_processed = Column(Integer, default=0)
