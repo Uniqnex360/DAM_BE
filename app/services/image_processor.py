@@ -650,8 +650,10 @@ class ImageProcessor:
         
         if self.resize_results is None and "resize" not in steps_applied:
             cur_h, cur_w = self.img.shape[:2]
-            if (cur_w, cur_h) != (self.target_w, self.target_h):
-                self.img = self._upscale_to_size(self.img, self.target_w, self.target_h)
+            if not self.skip_crop:
+                if (cur_w, cur_h) != (self.target_w, self.target_h):
+                    self.img = self._upscale_to_size(
+                        self.img, self.target_w, self.target_h)
 
         success, encoded = cv2.imencode(".jpg", self.img, [cv2.IMWRITE_JPEG_QUALITY, 95])
         return {
