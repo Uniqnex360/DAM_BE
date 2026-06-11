@@ -9,7 +9,7 @@ from app.api import deps
 from app.core import security
 from app.core.config import settings
 from app.db.session import get_db
-from app.models.auth import User, Profile
+from app.models.auth import User
 from app.schemas import user as user_schema
 from app.schemas import token as token_schema
 

@@ -6,15 +6,66 @@ import time
 import logging
 from typing import Tuple, Dict, List
 from transparent_background import Remover
+
+# from diffusers import StableDiffusionInpaintPipeline
+
 import easyocr 
 from rembg import remove, new_session
 rembg_session = new_session("isnet-general-use")
+# device = "cuda" if torch.cuda.is_available() else "cpu"
 
+# pipe = StableDiffusionInpaintPipeline.from_pretrained(
+#     "runwayml/stable-diffusion-inpainting",
+#     torch_dtype=torch.float16 if device == "cuda" else torch.float32
+# )
+from iopaint.model_manager import ModelManager
+from iopaint.schema import InpaintRequest, HDStrategy
+
+from simple_lama_inpainting import SimpleLama
+
+_lama = None
+def get_lama():
+    global _lama
+    if _lama is None:
+        _lama = SimpleLama()
+    return _lama
+# pipe = pipe.to(device)
+from huggingface_hub import hf_hub_download
+_iopaint = None
+def get_iopaint():
+    global _iopaint
+    if _iopaint is None:
+        _iopaint = ModelManager(
+            name="sd2",          # generative fill
+            device="cpu",
+            # name="lama"        # fast erase/watermark
+        )
+    return _iopaint
 logger = logging.getLogger(__name__)
 TARGET_SIZE = (2000, 2000)
 CONFIDENCE_THRESHOLD = 0.6
 _remover = None
+from ultralytics import YOLO
 
+_wm_detector = None
+
+def get_wm_detector():
+    global _wm_detector
+    if _wm_detector is None:
+        try:
+            # This returns the local path to the 'best.pt' file 
+            # (It's already in the Docker image cache, so no download happens here)
+            model_path = hf_hub_download(
+                repo_id="qfisch/yolov8n-watermark-detection", 
+                filename="best.pt"
+            )
+            # Load YOLO using the actual local path
+            _wm_detector = YOLO(model_path)
+            logger.info(f" Watermark detector loaded from: {model_path}")
+        except Exception as e:
+            logger.error(f" Failed to load watermark detector: {e}")
+            _wm_detector = None
+    return _wm_detector
 def get_remover():
     global _remover
     if _remover is None:
@@ -181,6 +232,158 @@ class ImageProcessor:
                             255, -1)
         
         logger.info("Corner logo detection complete")
+    # def remove_watermark(self):
+    #     try:
+    #         logger.info("Starting Stable Diffusion watermark removal...")
+
+    #         img = self.img.copy()
+    #         h, w = img.shape[:2]
+
+    #         # --- Detect watermark via brightness ---
+    #         hsv = cv2.cvtColor(img, cv2.COLOR_BGR2HSV)
+    #         lower_white = np.array([0, 0, 170])
+    #         upper_white = np.array([180, 60, 255])
+
+    #         mask = cv2.inRange(hsv, lower_white, upper_white)
+    #         mask = cv2.GaussianBlur(mask, (7,7), 0)
+
+    #         if np.sum(mask) == 0:
+    #             logger.info("No watermark detected.")
+    #             return
+
+    #         # Convert to PIL
+    #         image_pil = Image.fromarray(cv2.cvtColor(img, cv2.COLOR_BGR2RGB))
+    #         mask_pil = Image.fromarray(mask).convert("L")
+
+    #         prompt = "remove watermark, preserve fabric texture, preserve embroidery details"
+
+    #         result = pipe(
+    #             prompt=prompt,
+    #             image=image_pil,
+    #             mask_image=mask_pil,
+    #             guidance_scale=7.5,
+    #             num_inference_steps=30
+    #         ).images[0]
+
+    #         self.img = cv2.cvtColor(np.array(result), cv2.COLOR_RGB2BGR)
+
+    #         logger.info("Stable Diffusion watermark removal complete ✅")
+
+    #     except Exception as e:
+    #         logger.error(f"Watermark removal failed: {e}")
+    def image_refill(self):
+        
+        try:
+            logger.info("Auto-analyzing geometry for IOPaint refill...")
+            h, w = self.img.shape[:2]
+
+            # ── 1. Detect where the product touches the border ────────────────
+            gray = cv2.cvtColor(self.img, cv2.COLOR_BGR2GRAY)
+            # Find high-contrast edges (the product's 'stubs')
+            edges = cv2.Canny(gray, 50, 150)
+            
+            # ── 2. Create Expanded Canvas ─────────────────────────────────────
+            # Use BORDER_REPLICATE instead of a solid color.
+            # This prevents the 'white smudge' by extending the actual background texture.
+            pad = int(max(h, w) * 0.15)
+            img_padded = cv2.copyMakeBorder(self.img, pad, pad, pad, pad, cv2.BORDER_REPLICATE)
+            mask = np.zeros(img_padded.shape[:2], dtype=np.uint8)
+
+            # ── 3. Surgical Masking (Target only the cut-off areas) ────────────
+            has_stubs = False
+            
+            # Check Top
+            if np.any(edges[0, :]):
+                idx = np.where(edges[0, :] > 0)[0]
+                cv2.rectangle(mask, (idx[0]+pad-10, 0), (idx[-1]+pad+10, pad+20), 255, -1)
+                has_stubs = True
+            
+            # Check Bottom
+            if np.any(edges[-1, :]):
+                idx = np.where(edges[-1, :] > 0)[0]
+                cv2.rectangle(mask, (idx[0]+pad-10, h+pad-20), (idx[-1]+pad+10, h+2*pad), 255, -1)
+                has_stubs = True
+
+            # Check Left
+            if np.any(edges[:, 0]):
+                idx = np.where(edges[:, 0] > 0)[0]
+                cv2.rectangle(mask, (0, idx[0]+pad-10), (pad+20, idx[-1]+pad+10), 255, -1)
+                has_stubs = True
+
+            # Check Right
+            if np.any(edges[:, -1]):
+                idx = np.where(edges[:, -1] > 0)[0]
+                cv2.rectangle(mask, (w+pad-20, idx[0]+pad-10), (w+2*pad, idx[-1]+pad+10), 255, -1)
+                has_stubs = True
+
+            if not has_stubs:
+                logger.info("No cut-off edges detected by AI analysis.")
+                return False
+
+            # ── 4. Call IOPaint ───────────────────────────────────────────────
+            model = get_iopaint()
+            img_rgb = cv2.cvtColor(img_padded, cv2.COLOR_BGR2RGB)
+            
+            # We use the method provided in your snippet
+            # Note: If using LaMa, prompt is ignored, but helpful if you switch to SD
+            result_rgb = model.inpaint(
+                image=img_rgb,
+                mask=mask,
+                config=InpaintRequest(
+                    hd_strategy=HDStrategy.ORIGINAL,
+                    hd_strategy_crop_margin=128,
+                    prompt="seamless product surface extension, high resolution metal texture",
+                )
+            )
+            
+            self.img = cv2.cvtColor(result_rgb, cv2.COLOR_RGB2BGR)
+            logger.info("IOPaint shape reconstruction complete ✅")
+            return True
+
+        except Exception as e:
+            logger.error(f"IOPaint Refill failed: {e}")
+            return False
+
+    def remove_watermark(self):
+        try:
+            logger.info("Starting watermark removal...")
+            h, w = self.img.shape[:2]
+            combined_mask = np.zeros((h, w), dtype=np.uint8)
+
+            # ── YOLOv8 watermark detection ────────────────────────────────────────
+            detector = get_wm_detector()
+            img_rgb = cv2.cvtColor(self.img, cv2.COLOR_BGR2RGB)
+            results = detector(img_rgb, conf=0.25, verbose=False)
+
+            detected = False
+            for result in results:
+                for box in result.boxes:
+                    x1, y1, x2, y2 = map(int, box.xyxy[0].tolist())
+                    pad = 10
+                    x1 = max(0, x1 - pad); y1 = max(0, y1 - pad)
+                    x2 = min(w, x2 + pad); y2 = min(h, y2 + pad)
+                    combined_mask[y1:y2, x1:x2] = 255
+                    detected = True
+                    logger.info(f"Watermark detected: box=({x1},{y1},{x2},{y2}) conf={box.conf[0]:.2f}")
+
+            if not detected:
+                logger.info("No watermark detected by YOLO, skipping.")
+                return
+
+            # ── Dilate mask slightly to catch edges ───────────────────────────────
+            kernel = np.ones((15, 15), np.uint8)
+            combined_mask = cv2.dilate(combined_mask, kernel, iterations=1)
+
+            # ── LaMa inpainting ───────────────────────────────────────────────────
+            lama = get_lama()
+            pil_img = Image.fromarray(cv2.cvtColor(self.img, cv2.COLOR_BGR2RGB))
+            pil_mask = Image.fromarray(combined_mask)
+            result = lama(pil_img, pil_mask)
+            self.img = cv2.cvtColor(np.array(result), cv2.COLOR_RGB2BGR)
+            logger.info("Watermark removal complete ✅")
+
+        except Exception as e:
+            logger.error(f"Watermark removal failed: {e}")
     def resize_ecom(self):
         h, w = self.img.shape[:2]
         if not self.resize_dims:
@@ -289,7 +492,7 @@ class ImageProcessor:
 
             pil_img = Image.open(io.BytesIO(output_bytes)).convert("RGBA")
 
-            # ✅ Proper color-safe blending
+            # Proper color-safe blending
             bg = Image.new("RGB", pil_img.size, (255, 255, 255))
             bg.paste(pil_img, mask=pil_img.split()[3])
 
@@ -421,6 +624,11 @@ class ImageProcessor:
             if "text-remove" in self.operations:
                 self.remove_text()
                 steps_applied.append("text_removal")
+            if "image-refill" in self.operations:
+                self.image_refill()
+                steps_applied.append("geometry_reconstruction")
+            if "watermark-remove" in self.operations:
+                self.remove_watermark()
             if "retouch" in self.operations:
                 self.retouch_image()
                 steps_applied.append("retouch")
