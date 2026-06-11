@@ -45,3 +45,19 @@ async def get_current_user(
         raise HTTPException(status_code=400, detail="Inactive user")
         
     return user
+
+
+class PermissionChecker:
+    def __init__(self, required_roles: list[str]):
+        self.required_roles = required_roles
+
+    async def __call__(
+        self,
+        current_user: User = Depends(get_current_user)
+    ) -> User:
+        if current_user.role not in self.required_roles:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Insufficient permissions"
+            )
+        return current_user
