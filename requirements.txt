@@ -26,7 +26,7 @@ cloudinary>=1.36.0
 opencv-python>=4.0
 Pillow==9.5.0
 numpy>=1.24,<2.0
-
+gradio==5.5.0
 rembg==2.0.69
 onnxruntime==1.23.2
 
