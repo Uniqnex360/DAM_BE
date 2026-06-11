@@ -72,7 +72,7 @@ async def upload_asset(
     crop_map = {item["filename"]: item for item in crop_list}
 
     for file in files:
-        if file.content_type not in ["image/jpeg", "image/png", "image/webp", "application/pdf",'image/avif']:
+        if file.content_type not in ["image/jpeg", "image/png", "image/webp", "application/pdf", 'image/avif']:
             raise HTTPException(
                 status_code=400, detail=f"Invalid file type: {file.filename}")
         image_metadata = {}
@@ -81,8 +81,9 @@ async def upload_asset(
 
         if crop_info:
             image_metadata["crop_mode"] = crop_info.get(
-                "cropMode")                 
-            image_metadata["target_aspect_ratio"] = crop_info.get("targetAspectRatio")
+                "cropMode")
+            image_metadata["target_aspect_ratio"] = crop_info.get(
+                "targetAspectRatio")
     upload_record = Upload(
         user_id=current_user.id,
         status="uploaded",
@@ -142,9 +143,9 @@ async def upload_asset(
             for _ in range(successful_uploads):
                 await update_processing_stats(stats_db, current_user.id, "upload", 0)
             await stats_db.commit()
-            print(f"🔥 DEBUG: Recorded {successful_uploads} uploads")
+            print(f" DEBUG: Recorded {successful_uploads} uploads")
     except Exception as e:
-        print(f"❌ Upload stats failed (non-critical): {e}")
+        print(f" Upload stats failed (non-critical): {e}")
     return {"upload_id": str(upload_record.id), "images": results, "status": "uploaded"}
 PROCESSING_SEMAPHORE = asyncio.Semaphore(
     int(os.getenv("MAX_CONCURRENT_PROCESSING", "2"))
