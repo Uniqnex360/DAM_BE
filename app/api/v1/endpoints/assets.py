@@ -43,6 +43,7 @@ async def upload_asset(
     files: list[UploadFile] = File(...),
     project_name: str = Form(None),
     original_dimensions: str = Form(None),
+    crop_settings: str = Form(None),
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(deps.get_current_user)
 ):
@@ -67,10 +68,18 @@ async def upload_asset(
             await db.commit()
             await db.refresh(proj)
         project_id = proj.id
+    crop_list = json.loads(crop_settings) if crop_settings else []
+    crop_map = {item["filename"]: item for item in crop_list}
+
     for file in files:
         if file.content_type not in ["image/jpeg", "image/png", "image/webp", "application/pdf",'image/avif']:
             raise HTTPException(
                 status_code=400, detail=f"Invalid file type: {file.filename}")
+        crop_info = crop_map.get(file.filename)
+        if crop_info:
+            image_metadata["crop_mode"] = crop_info.get(
+                "cropMode")                 # "free" or "preset"
+            image_metadata["target_aspect_ratio"] = crop_info.get("targetAspectRatio")
     upload_record = Upload(
         user_id=current_user.id,
         status="uploaded",
@@ -177,14 +186,31 @@ async def process_image_asset(
                 "resize") if options.get("resize") else None
             skip_crop = options.get("skip_crop", False)
             target_dimensions = None
-            if img_record.exif_data and "original_dimensions" in img_record.exif_data:
-                target_dimensions = img_record.exif_data["original_dimensions"]
-                logger.info(
-                    f"Using original dimensions as target: {target_dimensions}")
-                skip_crop = True
+            crop_mode = None
+            target_aspect_ratio = None
+
+            if img_record.exif_data:
+                if "original_dimensions" in img_record.exif_data:
+                    target_dimensions = img_record.exif_data["original_dimensions"]
+                    logger.info(
+                        f"Using original dimensions as target: {target_dimensions}")
+                crop_mode = img_record.exif_data.get("crop_mode")
+                target_aspect_ratio = img_record.exif_data.get("target_aspect_ratio")
+                if crop_mode:
+                    logger.info(
+                        f"Crop mode: {crop_mode}, target aspect ratio: {target_aspect_ratio}")
+
+            
+            skip_crop = False
             processor = ImageProcessor(
-                image_content, resize_dims=resize_dims, operations=operations,
-                autoDetect=autoDetect, skip_crop=skip_crop, target_dimensions=target_dimensions
+                image_content,
+                resize_dims=resize_dims,
+                operations=operations,
+                autoDetect=autoDetect,
+                skip_crop=skip_crop,
+                target_dimensions=target_dimensions,
+                crop_mode=crop_mode,                     
+                target_aspect_ratio=target_aspect_ratio  
             )
             proc_result = await asyncio.to_thread(processor.process)
             processed_bytes = proc_result["image_bytes"]
