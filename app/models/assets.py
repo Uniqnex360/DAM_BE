@@ -27,8 +27,6 @@ class Image(Base):
     masks=Column(JSONB, server_default=text("'{}'::jsonb"))
     exif_data=Column(JSONB,server_default=text("'{}'::jsonb"))
     embeddings_id=Column(String)
-    category_id=Column(UUID(as_uuid=True),ForeignKey('categories.id'))
-    brand_id=Column(UUID(as_uuid=True),ForeignKey('brands.id'))
     processed_url=Column(String)
     processing_status=Column(String,server_default='pending')
 
