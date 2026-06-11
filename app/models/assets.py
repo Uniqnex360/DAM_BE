@@ -6,7 +6,6 @@ from .base import Base
 class Upload(Base):
     __tablename__='uploads'
     user_id=Column(UUID(as_uuid=True),ForeignKey('users.id'))
-    product_id=Column(UUID(as_uuid=True),ForeignKey('products.id'))
     project_id = Column(UUID(as_uuid=True), ForeignKey('projects.id'))  
     status=Column(String,server_default='uploaded')
     project = relationship("Project", back_populates="uploads") 
@@ -36,7 +35,6 @@ class Image(Base):
 class Model3D(Base):
     __tablename__='models_3d'
     user_id=Column(UUID(as_uuid=True),ForeignKey('users.id'))
-    product_id=Column(UUID(as_uuid=True),ForeignKey('products.id'))
     name=Column(String,nullable=False)
     glb_url = Column(String)
     usdz_url = Column(String)
