@@ -23,7 +23,7 @@ async def update_processing_stats(
         )
         stats = result.scalars().first()
         if not stats:
-            print("🔥 DEBUG: Creating new stats record for today")
+            print(" DEBUG: Creating new stats record for today")
             stats = ProcessingStatistic(
                 user_id=user_id,
                 operation_counts={},

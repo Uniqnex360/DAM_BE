@@ -23,7 +23,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # RUN mkdir -p /root/.u2net \
 #     && curl -L https://github.com/danielgatis/rembg/releases/download/v0.0.0/u2net.onnx -o /root/.u2net/u2net.onnx
 
-COPY requirements.txt .
+COPY requirements.txt constraints.txt ./
 
 # Install typing-extensions and jinja2 first
 RUN pip install --no-cache-dir --no-compile typing-extensions==4.12.2 jinja2==3.1.3
@@ -38,7 +38,7 @@ RUN pip install --no-cache-dir --no-compile \
 RUN pip install --no-cache-dir --no-compile tbb
 
 # Install all other dependencies
-RUN pip install --no-cache-dir --no-compile -r requirements.txt
+RUN pip install --no-cache-dir --no-compile -c constraints.txt -r requirements.txt
 
 COPY . .
 

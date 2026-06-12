@@ -2,7 +2,6 @@ from fastapi import APIRouter, Depends, UploadFile, File, HTTPException, Body, F
 from fastapi.concurrency import run_in_threadpool
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
-from sqlalchemy.orm import selectinload
 import uuid
 import requests
 import asyncio
@@ -16,16 +15,18 @@ from app.models.assets import Upload, Image
 from app.services.media import upload_image_to_cloudinary
 from app.services.image_processor import ImageProcessor
 from app.services.quality_analyzer import analyze_image_quality
-from app.schemas.asset import BatchUploadResponse, ImageResponse
-from app.schemas.analysis import AnalyzeRequest, AnalyzeResponse
+from app.schemas.asset import BatchUploadResponse
+from app.schemas.analysis import AnalyzeRequest
 from app.services.statistics import update_processing_stats
 from app.models.project import Project
 import traceback
 import logging
 from sqlalchemy import select, func
+from app.api.utils.target_user_id import get_target_user_id
 logger = logging.getLogger("assets")
 logger.setLevel(logging.INFO)
 router = APIRouter()
+
 
 
 @router.post("/analyze")
@@ -44,9 +45,11 @@ async def upload_asset(
     project_name: str = Form(None),
     original_dimensions: str = Form(None),
     crop_settings: str = Form(None),
+    user_id: str = Form(None),
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(deps.get_current_user)
 ):
+    target_user_id = get_target_user_id(current_user, user_id)
     import json
     dimensions_map = {}
     if original_dimensions:
@@ -59,11 +62,11 @@ async def upload_asset(
     if project_name:
         existing = await db.execute(
             select(Project).where(Project.name == project_name,
-                                  Project.user_id == current_user.id)
+                                  Project.user_id == target_user_id)
         )
         proj = existing.scalars().first()
         if not proj:
-            proj = Project(user_id=current_user.id, name=project_name)
+            proj = Project(user_id=target_user_id, name=project_name)
             db.add(proj)
             await db.commit()
             await db.refresh(proj)
@@ -71,9 +74,9 @@ async def upload_asset(
     crop_list = json.loads(crop_settings) if crop_settings else []
     crop_map = {item["filename"]: item for item in crop_list}
 
-    # Create upload record FIRST
+    
     upload_record = Upload(
-        user_id=current_user.id,
+        user_id=target_user_id,
         status="uploaded",
         project_id=project_id,
         metadata_obj={"project_name": project_name} if project_name else {}
@@ -85,42 +88,42 @@ async def upload_asset(
     successful_uploads = 0
     results = []
 
-    # SINGLE LOOP - validation, metadata, and upload all together
+    
     for file in files:
-        # Validate file type
+        
         if file.content_type not in ["image/jpeg", "image/png", "image/webp", "application/pdf", 'image/avif']:
             raise HTTPException(
                 status_code=400, detail=f"Invalid file type: {file.filename}")
 
         try:
-            # ✅ CREATE FRESH METADATA FOR EACH FILE
+            
             image_metadata = {}
 
-            # ✅ ADD CROP SETTINGS (if any)
+            
             crop_info = crop_map.get(file.filename)
             if crop_info:
                 image_metadata["crop_mode"] = crop_info.get("cropMode")
                 image_metadata["target_aspect_ratio"] = crop_info.get(
                     "targetAspectRatio")
 
-            # Upload file
+            
             file_ext = file.filename.rsplit(
                 '.', 1)[-1] if '.' in file.filename else 'jpg'
-            unique_filename = f"{current_user.id}/{uuid.uuid4()}.{file_ext}"
+            unique_filename = f"{target_user_id}/{uuid.uuid4()}.{file_ext}"
             file_content = await file.read()
             result = upload_image_to_cloudinary(file_content, unique_filename)
 
-            # Add original dimensions if present
+            
             original_dims = dimensions_map.get(file.filename)
             if original_dims:
                 image_metadata["original_dimensions"] = original_dims
                 logger.info(
                     f"Storing original dims for {file.filename}: {original_dims}")
 
-            # Create image record
+            
             new_image = Image(
                 upload_id=upload_record.id,
-                user_id=current_user.id,
+                user_id=target_user_id,
                 url=result.get("secure_url"),
                 thumbnail_url=result.get("secure_url"),
                 width=result.get("width", 0),
@@ -152,16 +155,17 @@ async def upload_asset(
         await db.rollback()
         raise HTTPException(status_code=500, detail="All uploads failed")
 
-    # Update stats (rest remains the same)
+    
     try:
         from app.db.session import AsyncSessionLocal
         async with AsyncSessionLocal() as stats_db:
             for _ in range(successful_uploads):
                 await update_processing_stats(stats_db, current_user.id, "upload", 0)
+
             await stats_db.commit()
-            print(f"🔥 DEBUG: Recorded {successful_uploads} uploads")
+            print(f" DEBUG: Recorded {successful_uploads} uploads")
     except Exception as e:
-        print(f"❌ Upload stats failed (non-critical): {e}")
+        print(f" Upload stats failed (non-critical): {e}")
 
     return {"upload_id": str(upload_record.id), "images": results, "status": "uploaded"}
 PROCESSING_SEMAPHORE = asyncio.Semaphore(
@@ -178,6 +182,7 @@ async def process_image_asset(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(deps.get_current_user)
 ):
+    target_user_id = get_target_user_id(current_user, None)
     print(f"DEBUG: operations={operations}")
     print(f"DEBUG: options={options}")
     print(f"DEBUG: options type={type(options)}")
@@ -221,7 +226,7 @@ async def process_image_asset(
                         f"Crop mode: {crop_mode}, target aspect ratio: {target_aspect_ratio}")
 
             
-            # skip_crop = False
+            
             processor = ImageProcessor(
                 image_content,
                 resize_dims=resize_dims,
@@ -245,7 +250,8 @@ async def process_image_asset(
                     if isinstance(img_data, np.ndarray):
                         success, encoded = cv2.imencode(".jpg", img_data)
                         img_data = encoded.tobytes()
-                    m_filename = f"processed/{current_user.id}/{image_id}_{res['id']}.jpg"
+                    m_filename = f"processed/{img_record.user_id}/{image_id}_{res['id']}.jpg"
+
                     m_upload = upload_image_to_cloudinary(img_data, m_filename)
                     outputs.append({
                         "marketplace": res["id"],
@@ -291,7 +297,7 @@ async def process_image_asset(
                 async with AsyncSessionLocal() as stats_db:
                     if steps:
                         for step in steps:
-                            await update_processing_stats(stats_db, current_user.id, step, duration)
+                            await update_processing_stats(stats_db, target_user_id, step, duration)
                     await stats_db.commit()
             except Exception as e:
                 print(f" Stats update failed: {e}")
@@ -307,34 +313,66 @@ async def process_image_asset(
 
 @router.get("/gallery")
 async def get_gallery(
+    user_id: str = None,
+    all: bool = False,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(deps.get_current_user)
 ):
-    query = select(Upload).where(Upload.user_id == current_user.id).order_by(
-        Upload.created_at.desc()).limit(20)
-    result = await db.execute(query)
-    uploads = result.scalars().all()
-    gallery = []
-    for up in uploads:
-        imgs = await db.execute(select(Image).where(Image.upload_id == up.id))
-        images_list = imgs.scalars().all()
-        gallery.append({
-            "id": str(up.id),
-            "status": up.status,
-            "created_at": up.created_at,
-            "metadata": up.metadata_obj or {},
-            "images": [
-                {
-                    "id": str(i.id),
-                    "url": i.url,
-                    "name": i.name,
-                    "processed_url": i.processed_url,
-                    "processing_status": i.processing_status,
-                    "thumbnail_url": i.thumbnail_url or i.url,
-                    "width": i.width,
-                    "height": i.height,
-                    "created_at": i.created_at
-                } for i in images_list
-            ]
-        })
-    return gallery
+    try:
+        is_admin = current_user.role == "admin"
+
+        if all and is_admin:
+            query = (
+                select(Upload)
+                .order_by(Upload.created_at.desc())
+                .limit(50)
+            )
+        else:
+            target_user_id = get_target_user_id(current_user, user_id)
+            query = (
+                select(Upload)
+                .where(Upload.user_id == target_user_id)
+                .order_by(Upload.created_at.desc())
+                .limit(20)
+            )
+
+        result = await db.execute(query)
+        uploads = result.scalars().all()
+
+        gallery = []
+
+        for up in uploads:
+            imgs = await db.execute(
+                select(Image).where(Image.upload_id == up.id)
+            )
+            images_list = imgs.scalars().all()
+
+            gallery.append({
+                "id": str(up.id),
+                "status": up.status,
+                "created_at": up.created_at,
+                "metadata": up.metadata_obj or {},
+                "images": [
+                    {
+                        "id": str(i.id),
+                        "url": i.url,
+                        "name": i.name,
+                        "processed_url": i.processed_url,
+                        "processing_status": i.processing_status,
+                        "thumbnail_url": i.thumbnail_url or i.url,
+                        "width": i.width,
+                        "height": i.height,
+                        "created_at": i.created_at
+                    }
+                    for i in images_list
+                ]
+            })
+
+        return gallery
+
+    except Exception as e:
+        logger.exception("Error fetching gallery")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to fetch gallery: {str(e)}"
+        )
