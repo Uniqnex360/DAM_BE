@@ -38,35 +38,50 @@ async def login_access_token(
         "token_type": "bearer",
     }
 
+
 @router.post("/register", response_model=user_schema.User)
 async def register_new_user(
     *,
     db: AsyncSession = Depends(get_db),
     user_in: user_schema.UserCreate,
 ) -> Any:
-
-    result = await db.execute(select(User).where(User.email == user_in.email))
-    if result.scalars().first():
-        raise HTTPException(
-            status_code=400,
-            detail="The user with this email already exists in the system",
-        )
+    try:
         
-    user = User(
-        email=user_in.email,
-        hashed_password=security.get_password_hash(user_in.password),
-        full_name=user_in.full_name,
-        is_active=True
-    )
-    db.add(user)
-    await db.commit()
-    await db.refresh(user)
-    
-   
-    await db.commit()
-    
-    return user
+        email = user_in.email if user_in.email and user_in.email.strip() else None
 
+        
+        if email:
+            result = await db.execute(select(User).where(User.email == email))
+            if result.scalars().first():
+                raise HTTPException(
+                    status_code=400,
+                    detail="The user with this email already exists in the system",
+                )
+
+        user = User(
+            email=email,  
+            hashed_password=security.get_password_hash(user_in.password),
+            full_name=user_in.full_name,
+            is_active=True
+        )
+        db.add(user)
+        await db.commit()
+        await db.refresh(user)
+
+        logger.info(
+            f"User registered successfully: {user_in.full_name} (email: {email or 'No email'})")
+        return user
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.exception(
+            f"Registration failed for user {user_in.full_name}: {str(e)}")
+        await db.rollback()
+        raise HTTPException(
+            status_code=500,
+            detail="Failed to register user. Please try again later."
+        )
 @router.get('/verify',response_model=dict)
 async def verify_token(current_user: User = Depends(deps.get_current_user),) -> Any:
     return {
