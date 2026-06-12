@@ -42,10 +42,25 @@ async def create_user(
                     status_code=400,
                     detail="User with this email already exists"
                 )
+        if user_in.full_name and user_in.full_name.strip():
+            name_val = user_in.full_name.strip()
+            from sqlalchemy import func
+            name_query = await db.execute(
+                select(UserModel).where(func.lower(
+                    UserModel.full_name) == name_val.lower())
+            )
+            if name_query.scalars().first():
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"A user with the name '{name_val}' already exists"
+                )
+        else:
+            raise HTTPException(
+                status_code=400, detail="Full name is required")
         new_user = UserModel(
             email=email_val,
             hashed_password=security.get_password_hash(user_in.password),
-            full_name=user_in.full_name,
+            full_name=user_in.full_name.strip(),
             role=user_in.role,
             is_active=user_in.is_active
         )

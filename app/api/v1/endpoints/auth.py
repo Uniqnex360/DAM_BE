@@ -35,7 +35,7 @@ async def login_access_token(
     }
     
 @router.post("/register", response_model=user_schema.User)
-async def register_new_user(
+async def signup(
     *,
     db: AsyncSession = Depends(get_db),
     user_in: user_schema.UserCreate,
