@@ -33,12 +33,17 @@ async def create_user(
     current_admin: UserModel = Depends(deps.PermissionChecker(["admin"]))
 ):
     try:
-        query = await db.execute(select(UserModel).where(UserModel.email == user_in.email))
-        if query.scalars().first():
-            raise HTTPException(
-                status_code=400, detail="User with this email already exists")
+        email_val = user_in.email.strip().lower(
+        ) if user_in.email and user_in.email.strip() else None
+        if email_val is not None:
+            query = await db.execute(select(UserModel).where(UserModel.email == email_val))
+            if query.scalars().first():
+                raise HTTPException(
+                    status_code=400,
+                    detail="User with this email already exists"
+                )
         new_user = UserModel(
-            email=user_in.email,
+            email=email_val,
             hashed_password=security.get_password_hash(user_in.password),
             full_name=user_in.full_name,
             role=user_in.role,

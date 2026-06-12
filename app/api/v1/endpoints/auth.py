@@ -41,22 +41,18 @@ async def register_new_user(
     user_in: user_schema.UserCreate,
 ) -> Any:
     try:
-        email_val = user_in.email.strip().lower(
-        ) if user_in.email and user_in.email.strip() else None
-
-        if email_val is not None:
-            result = await db.execute(select(User).where(User.email == email_val))
+        email = user_in.email if user_in.email and user_in.email.strip() else None
+        if email:
+            result = await db.execute(select(User).where(User.email == email))
             if result.scalars().first():
                 raise HTTPException(
                     status_code=400,
                     detail="The user with this email already exists in the system",
                 )
-
         user = User(
-            email=email_val,
+            email=email,  
             hashed_password=security.get_password_hash(user_in.password),
             full_name=user_in.full_name,
-            role=user_in.role,
             is_active=True
         )
         db.add(user)
