@@ -1,1 +1,2 @@
-.env
+.env*.onnx
+.u2net/
