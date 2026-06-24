@@ -25,7 +25,7 @@ if settings.BACKEND_CORS_ORIGINS:
         allow_methods=["*"],
         allow_headers=["*"],
     )
-
+app.mount("/static", StaticFiles(directory="app/static"), name="static")
 @app.get("/")
 @app.head("/")
 def root():

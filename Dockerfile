@@ -42,6 +42,6 @@ RUN pip install --no-cache-dir --no-compile -c constraints.txt -r requirements.t
 
 COPY . .
 
-RUN mkdir -p static/uploads static/processed
+RUN mkdir -p app/static/uploads app/static/processed app/static/rooms
 
 CMD sh -c "alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port ${PORT} --workers 1"

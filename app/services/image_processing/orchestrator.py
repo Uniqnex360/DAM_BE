@@ -4,6 +4,8 @@ from typing import Dict, Optional
 
 from .analyzer import ImageAnalyzer
 from .exceptions import StepSkippedException
+from app.services.image_processing.steps.room_visualizer import RoomVisualizerStep
+
 from .registry import StepRegistry
 from .utils import (
     apply_single_resize,
@@ -52,6 +54,8 @@ class   ImageProcessor:
 
         self._analyzer = ImageAnalyzer()
         self._registry = step_registry if step_registry is not None else StepRegistry()
+        self._registry.register("room-visualizer", RoomVisualizerStep)
+
 
         logger.info(
             f"ImageProcessor: input={self.original_w}x{self.original_h}, "
