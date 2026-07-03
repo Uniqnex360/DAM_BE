@@ -1,15 +1,53 @@
+import io
+import logging
 from typing import Optional
+
 import cv2
 import numpy as np
 from PIL import Image
+import pillow_heif
+pillow_heif.register_heif_opener()
+pillow_heif.register_avif_opener()
 
+logger = logging.getLogger(__name__)
 
+# def decode_image(file_bytes: bytes) -> np.ndarray:
+#     nparr = np.frombuffer(file_bytes, np.uint8)
+#     img = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
+#     if img is None:
+#         raise ValueError("Could not decode image bytes")
+#     return img
 def decode_image(file_bytes: bytes) -> np.ndarray:
-    nparr = np.frombuffer(file_bytes, np.uint8)
-    img = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
-    if img is None:
-        raise ValueError("Could not decode image bytes")
-    return img
+    if not file_bytes:
+        raise ValueError("Could not decode image bytes: Input is empty")
+
+    try:
+        # 1. Read bytes via Pillow which safely decodes AVIF/HEIF/PNG/JPEG
+        pil_img = Image.open(io.BytesIO(file_bytes))
+        
+        # Force Pillow to read pixel stream into memory
+        pil_img.load()
+        
+        # 2. Ensure image is in a clean RGB mode (avoids color profile/palette issues)
+        if pil_img.mode != "RGB":
+            pil_img = pil_img.convert("RGB")
+            
+        # 3. Convert PIL RGB to OpenCV BGR NumPy array
+        img_np = np.array(pil_img)
+        img_bgr = cv2.cvtColor(img_np, cv2.COLOR_RGB2BGR)
+        
+        return img_bgr
+
+    except Exception as e:
+        logger.error(f"Failed decoding image with Pillow-Heif: {e}", exc_info=True)
+        
+        # Fallback to standard OpenCV decoder if Pillow failed (e.g. corrupted files)
+        logger.info("Attempting standard OpenCV decoding fallback...")
+        nparr = np.frombuffer(file_bytes, np.uint8)
+        img = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
+        if img is None:
+            raise ValueError(f"Could not decode image bytes: {e}")
+        return img
 
 
 def encode_image(image: np.ndarray, output_format: str = "jpg", quality: int = 95) -> bytes:
