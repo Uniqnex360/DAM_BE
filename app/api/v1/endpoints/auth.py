@@ -69,14 +69,25 @@ async def signup(
             status_code=500,
             detail="Failed to register user. Please try again later."
         )
-@router.get('/verify',response_model=dict)
-async def verify_token(current_user: User = Depends(deps.get_current_user),) -> Any:
-    return {
-        "valid": True,
-        "user": current_user.email,
-        "id": current_user.id,
-        "role": current_user.role
-    }
+@router.get('/verify', response_model=dict)
+async def verify_token(
+    current_user: User = Depends(deps.get_current_user),
+) -> Any:
+    try:
+        return {
+            "valid": True,
+            "user": current_user.email,
+            "full_name": current_user.full_name,
+            "id": current_user.id,
+            "role": current_user.role
+        }
+    except Exception as e:
+        logger.error(f"Token verification endpoint failed: {str(e)}", exc_info=True)
+        
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail=f"Token verification failed: {str(e)}"
+        )
 @router.post('/impersonate/{user_id}')
 async def impersonate_user(
     user_id: UUID,
