@@ -24,7 +24,7 @@ from app.services.process_use_case import ProcessImageUseCase
 from app.schemas.asset import BatchUploadResponse
 from app.schemas.analysis import AnalyzeRequest
 from app.api.utils.target_user_id import get_target_user_id
-from app.services.depth_generator import  ThreeDGenerator
+# from app.services.depth_generator import  ThreeDGenerator
 
 logger = logging.getLogger("assets")
 logger.setLevel(logging.INFO)
@@ -349,51 +349,52 @@ async def get_gallery(
 #         "model_url": model_url,
 #         "original_image_id": image_id,
 #     }
-@router.post("/{image_id}/generate-3d")
-async def generate_3d_assets(
-    image_id: str,
-    db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(deps.get_current_user),
-):
-    target_user_id = get_target_user_id(current_user, None)
+
+# @router.post("/{image_id}/generate-3d")
+# async def generate_3d_assets(
+#     image_id: str,
+#     db: AsyncSession = Depends(get_db),
+#     current_user: User = Depends(deps.get_current_user),
+# ):
+#     target_user_id = get_target_user_id(current_user, None)
     
-    repo = ImageRepository(db)
-    try:
-        db_uuid = uuid.UUID(image_id)
-        img_record = await repo.get_image(db_uuid)
-    except ValueError:
-        raise HTTPException(status_code=400, detail="Invalid Image ID")
+#     repo = ImageRepository(db)
+#     try:
+#         db_uuid = uuid.UUID(image_id)
+#         img_record = await repo.get_image(db_uuid)
+#     except ValueError:
+#         raise HTTPException(status_code=400, detail="Invalid Image ID")
 
-    if not img_record:
-        raise HTTPException(status_code=404, detail="Image not found")
+#     if not img_record:
+#         raise HTTPException(status_code=404, detail="Image not found")
 
-    fetcher = ImageFetcher()
-    image_content = await fetcher.fetch(img_record.url)
+#     fetcher = ImageFetcher()
+#     image_content = await fetcher.fetch(img_record.url)
 
-    generator = ThreeDGenerator()
-    try:
-        mesh_bytes = generator.generate_3d_mesh(image_content)
-    except Exception as e:
-        logger.error(f"3D generation failed: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+#     generator = ThreeDGenerator()
+#     try:
+#         mesh_bytes = generator.generate_3d_mesh(image_content)
+#     except Exception as e:
+#         logger.error(f"3D generation failed: {e}")
+#         raise HTTPException(status_code=500, detail=str(e))
 
-    # Upload the 3D model file
-    model_filename = f"3d_models/{target_user_id}/{image_id}_model.glb"
-    upload_result = upload_image_to_cloudinary(
-        mesh_bytes, 
-        model_filename, 
-        resource_type="raw"
-    )
+#     # Upload the 3D model file
+#     model_filename = f"3d_models/{target_user_id}/{image_id}_model.glb"
+#     upload_result = upload_image_to_cloudinary(
+#         mesh_bytes, 
+#         model_filename, 
+#         resource_type="raw"
+#     )
 
-    model_url = upload_result.get("secure_url")
+#     model_url = upload_result.get("secure_url")
     
-    # Save to database
-    img_record.exif_data = img_record.exif_data or {}
-    img_record.exif_data["model_3d_url"] = model_url
-    await db.commit()
+#     # Save to database
+#     img_record.exif_data = img_record.exif_data or {}
+#     img_record.exif_data["model_3d_url"] = model_url
+#     await db.commit()
 
-    return {
-        "status": "completed",
-        "model_url": model_url,
-        "original_image_id": image_id,
-    }
+#     return {
+#         "status": "completed",
+#         "model_url": model_url,
+#         "original_image_id": image_id,
+#     }
