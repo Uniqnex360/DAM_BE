@@ -145,7 +145,7 @@ async def upload_asset(
                 name=file.filename,
                 file_type=file.content_type,
                 exif_data=image_metadata,
-                applied_steps=applied_steps_in
+                applied_steps=applied_steps_init
             )
             db.add(new_image)
             await db.commit()
