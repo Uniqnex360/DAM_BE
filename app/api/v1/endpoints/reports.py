@@ -60,12 +60,13 @@ async def get_processing_report(
     current_user: User = Depends(deps.get_current_user)
 ):
     """
-    Generates a live, accurate processing report for the current user   
+    Generates a live, accurate processing report for the current user
     by querying the raw image data directly. This ensures all stats
     and operations are up-to-date.
     """
     try:
         # ✅ QUERY 1: Get the TRUE all-time summary from the Image table.
+        # This part is correct and unchanged.
         all_time_summary_query = select(
             func.count(Image.id).label("total_uploaded"),
             func.count(Image.id).filter(Image.processing_status == "completed").label("total_processed"),
@@ -75,8 +76,8 @@ async def get_processing_report(
         summary_result = await db.execute(all_time_summary_query)
         summary = summary_result.first()
 
-        # ✅ QUERY 2: Get the TRUE all-time operation counts from the Image table.
-        # This will correctly find 'smart_crop' and any other operation.
+        # ✅ QUERY 2: Get the TRUE all-time operation counts.
+        # This part is also correct and unchanged.
         op_counts_query = text("""
             SELECT step, COUNT(*) as count
             FROM images, jsonb_array_elements_text(applied_steps) as step
@@ -86,39 +87,46 @@ async def get_processing_report(
         op_counts_result = await db.execute(op_counts_query, {"uid": current_user.id})
         operation_counts = {row[0]: row[1] for row in op_counts_result}
 
-        # ✅ QUERY 3: Get the daily breakdown by grouping all images by their creation date.
-        # This gives a complete history, not just the last 30 days.
+        # ✅ QUERY 3 (CORRECTED): Get the complete daily breakdown.
+        # This new query uses CTEs to avoid the GroupingError.
         daily_breakdown_query = text("""
+            WITH daily_summary AS (
+                -- First, get the basic counts for each day
+                SELECT
+                    DATE_TRUNC('day', created_at AT TIME ZONE 'UTC')::date as date,
+                    COUNT(id) as total_uploaded,
+                    COUNT(id) FILTER (WHERE processing_status = 'completed') as total_processed,
+                    SUM(processing_time_ms) as total_time_ms
+                FROM images
+                WHERE user_id = :uid
+                GROUP BY date
+            ), daily_operations AS (
+                -- Second, correctly calculate the operations counts for each day
+                SELECT
+                    date,
+                    jsonb_object_agg(step, step_count) as operations
+                FROM (
+                    SELECT
+                        DATE_TRUNC('day', i.created_at AT TIME ZONE 'UTC')::date as date,
+                        s.step,
+                        COUNT(*) as step_count
+                    FROM images i, jsonb_array_elements_text(i.applied_steps) s(step)
+                    WHERE i.user_id = :uid
+                    GROUP BY date, s.step
+                ) as daily_step_counts
+                GROUP BY date
+            )
+            -- Finally, join the two sets of results together
             SELECT
-                DATE_TRUNC('day', created_at AT TIME ZONE 'UTC')::date as date,
-                COUNT(id) as total_uploaded,
-                COUNT(id) FILTER (WHERE processing_status = 'completed') as total_processed,
-                SUM(processing_time_ms) as total_time_ms,
-                (
-                    SELECT jsonb_object_agg(step, count)
-                    FROM (
-                        SELECT step, count(*)
-                        FROM jsonb_array_elements_text(images.applied_steps) as step
-                        GROUP BY step
-                    ) as daily_ops
-                ) as operations
-            FROM images
-            WHERE user_id = :uid
-            GROUP BY DATE_TRUNC('day', created_at AT TIME ZONE 'UTC')
-            ORDER BY date DESC
+                ds.date,
+                ds.total_uploaded,
+                ds.total_processed,
+                COALESCE(ds.total_time_ms, 0) as time_ms,
+                COALESCE(do.operations, '{}'::jsonb) as operations
+            FROM daily_summary ds
+            LEFT JOIN daily_operations do ON ds.date = do.date
+            ORDER BY ds.date DESC
         """)
-        # A slightly simpler version of Query 3 if the JSON aggregation is too complex or slow:
-        # daily_breakdown_query = text("""
-        #     SELECT
-        #         DATE_TRUNC('day', created_at AT TIME ZONE 'UTC')::date as date,
-        #         COUNT(id) as total_uploaded,
-        #         COUNT(id) FILTER (WHERE processing_status = 'completed') as total_processed,
-        #         SUM(processing_time_ms) as total_time_ms
-        #     FROM images
-        #     WHERE user_id = :uid
-        #     GROUP BY DATE_TRUNC('day', created_at AT TIME ZONE 'UTC')
-        #     ORDER BY date DESC
-        # """)
         
         daily_result = await db.execute(daily_breakdown_query, {"uid": current_user.id})
         daily_stats_rows = daily_result.mappings().all()
@@ -133,9 +141,9 @@ async def get_processing_report(
             "total_processing_time_ms": total_time,
             "avg_processing_time_ms": total_time // total_processed if total_processed > 0 else 0,
             "operation_counts": operation_counts,
+            # The result is already perfectly formatted, just convert to a list of dicts
             "daily_breakdown": [dict(row) for row in daily_stats_rows]
         }
     except Exception as e:
         logger.error(f"Error fetching live processing report for user {current_user.id}", exc_info=True)
         raise HTTPException(status_code=500, detail="Failed to fetch processing report")
-    
