@@ -24,6 +24,7 @@ from app.services.process_use_case import ProcessImageUseCase
 from app.schemas.asset import BatchUploadResponse
 from app.schemas.analysis import AnalyzeRequest
 from app.api.utils.target_user_id import get_target_user_id
+from app.services.depth_generator import  ThreeDGenerator
 
 logger = logging.getLogger("assets")
 logger.setLevel(logging.INFO)
@@ -114,10 +115,12 @@ async def upload_asset(
             image_metadata = {}
 
             crop_info = crop_map.get(file.filename)
+            applied_steps_init = [] 
             if crop_info:
                 image_metadata["crop_mode"] = crop_info.get("cropMode")
                 image_metadata["target_aspect_ratio"] = crop_info.get(
                     "targetAspectRatio")
+                applied_steps_init.append("smart_crop")
 
             file_ext = file.filename.rsplit(
                 ".", 1)[-1] if "." in file.filename else "jpg"
@@ -142,6 +145,7 @@ async def upload_asset(
                 name=file.filename,
                 file_type=file.content_type,
                 exif_data=image_metadata,
+                applied_steps=applied_steps_in
             )
             db.add(new_image)
             await db.commit()
@@ -284,3 +288,112 @@ async def get_gallery(
             status_code=500,
             detail=f"Failed to fetch gallery: {str(e)}",
         )
+        
+# @router.post("/{image_id}/generate-3d")
+# async def generate_3d_assets(
+#     image_id: str,
+#     db: AsyncSession = Depends(get_db),
+#     current_user: User = Depends(deps.get_current_user),
+# ):
+#     print(f"DEBUG: Generating 3D for Image ID: {image_id}")
+#     target_user_id = get_target_user_id(current_user, None)
+    
+#     repo = ImageRepository(db)
+#     img_record = await repo.get_image(image_id)
+    
+#     if not img_record:
+#         raise HTTPException(status_code=404, detail="Image not found")
+    
+#     # 1. Fetch the original image content
+#     fetcher = ImageFetcher()
+#     image_content = await fetcher.fetch(img_record.url)
+    
+#     # 2. Use the new 3D Generator (TripoSR)
+#     # Note: Ensure you renamed your class or updated it to generate meshes
+#     generator = ThreeDGenerator() 
+#     try:
+#         # Generate the .glb mesh data
+#         mesh_bytes = generator.generate_3d_mesh(image_content)
+#     except Exception as e:
+#         logger.error(f"Full 3D mesh generation failed: {e}")
+#         raise HTTPException(status_code=500, detail="3D generation failed")
+    
+#     # 3. Upload the .glb file to Cloudinary
+#     # We use resource_type="raw" because .glb is a 3D binary file, not a standard image
+#     model_filename = f"3d_models/{target_user_id}/{image_id}_model.glb"
+    
+#     try:
+#         # Note: Ensure your upload function handles resource_type="raw" for Cloudinary
+#         upload_result = upload_image_to_cloudinary(
+#             mesh_bytes, 
+#             model_filename,
+#             resource_type="raw" 
+#         )
+#     except Exception as e:
+#         logger.error(f"Cloudinary upload failed: {e}")
+#         raise HTTPException(status_code=500, detail="Failed to store 3D model")
+
+#     # 4. Update the Database metadata
+#     model_url = upload_result.get("secure_url")
+#     img_record.exif_data = img_record.exif_data or {}
+#     img_record.exif_data["model_3d_url"] = model_url
+    
+#     # If you want to keep depth maps for other features, you can, 
+#     # but for "rotate and all", model_3d_url is the primary one.
+    
+#     await db.commit()
+    
+#     # 5. Return the URL to the frontend
+#     return {
+#         "status": "completed",
+#         "model_url": model_url,
+#         "original_image_id": image_id,
+#     }
+@router.post("/{image_id}/generate-3d")
+async def generate_3d_assets(
+    image_id: str,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(deps.get_current_user),
+):
+    target_user_id = get_target_user_id(current_user, None)
+    
+    repo = ImageRepository(db)
+    try:
+        db_uuid = uuid.UUID(image_id)
+        img_record = await repo.get_image(db_uuid)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid Image ID")
+
+    if not img_record:
+        raise HTTPException(status_code=404, detail="Image not found")
+
+    fetcher = ImageFetcher()
+    image_content = await fetcher.fetch(img_record.url)
+
+    generator = ThreeDGenerator()
+    try:
+        mesh_bytes = generator.generate_3d_mesh(image_content)
+    except Exception as e:
+        logger.error(f"3D generation failed: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+    # Upload the 3D model file
+    model_filename = f"3d_models/{target_user_id}/{image_id}_model.glb"
+    upload_result = upload_image_to_cloudinary(
+        mesh_bytes, 
+        model_filename, 
+        resource_type="raw"
+    )
+
+    model_url = upload_result.get("secure_url")
+    
+    # Save to database
+    img_record.exif_data = img_record.exif_data or {}
+    img_record.exif_data["model_3d_url"] = model_url
+    await db.commit()
+
+    return {
+        "status": "completed",
+        "model_url": model_url,
+        "original_image_id": image_id,
+    }
