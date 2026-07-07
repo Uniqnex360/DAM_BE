@@ -93,6 +93,8 @@ class   ImageProcessor:
 
         if self.crop_mode == "preset" and self.target_aspect_ratio:
             self.img = crop_to_aspect_ratio(self.img, self.target_aspect_ratio)
+            steps_applied.append("smart_crop")
+
 
         if self.auto_detect:
             if confidence["bg_clean"] > CONFIDENCE_THRESHOLD:
