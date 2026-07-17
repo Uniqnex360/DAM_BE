@@ -24,6 +24,7 @@ if settings.BACKEND_CORS_ORIGINS:
         allow_credentials=True,
         allow_methods=["*"],
         allow_headers=["*"],
+        expose_headers=["Content-Disposition"],
     )
 app.mount("/static", StaticFiles(directory="app/static"), name="static")
 @app.get("/")

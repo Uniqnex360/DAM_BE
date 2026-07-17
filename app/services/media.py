@@ -17,7 +17,7 @@ def sanitize_filename(filename: str) -> str:
     filename = re.sub(r'[\s_]+', '_', filename)
     return filename.strip('_')
 
-def upload_image_to_cloudinary(file_bytes: bytes, filename: str) -> dict:
+def upload_image_to_cloudinary(file_bytes: bytes, filename: str,resource_type: str = "image") -> dict:
     safe_name = sanitize_filename(filename)
     if settings.STORAGE_PROVIDER == "local":
         if filename.startswith("processed/"):
@@ -43,7 +43,7 @@ def upload_image_to_cloudinary(file_bytes: bytes, filename: str) -> dict:
             file_bytes,
             public_id=safe_name,
             upload_preset=settings.CLOUDINARY_UPLOAD_PRESET, 
-            resource_type="auto"
+            resource_type=resource_type  
         )
         return upload_result
     except Exception as e:

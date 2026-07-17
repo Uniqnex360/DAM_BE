@@ -6,6 +6,8 @@ services:
      - "127.0.0.1:8002:10000"
     volumes:
       - .:/app  
+      - rembg_cache:/root/.u2net 
+      
       # - ~/.u2net:/root/.u2net 
     environment:
       - POSTGRES_SERVER=analyzer_db
@@ -50,3 +52,4 @@ services:
 
 volumes:
   analyzer_data: 
+  rembg_cache:

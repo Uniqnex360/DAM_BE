@@ -286,7 +286,7 @@ class ImageProcessor:
 
     #         self.img = cv2.cvtColor(np.array(result), cv2.COLOR_RGB2BGR)
 
-    #         logger.info("Stable Diffusion watermark removal complete ✅")
+    #         logger.info("Stable Diffusion watermark removal complete")
 
     #     except Exception as e:
     #         logger.error(f"Watermark removal failed: {e}")
@@ -356,7 +356,7 @@ class ImageProcessor:
             )
             
             self.img = cv2.cvtColor(result_rgb, cv2.COLOR_RGB2BGR)
-            logger.info("IOPaint shape reconstruction complete ✅")
+            logger.info("IOPaint shape reconstruction complete ")
             return True
 
         except Exception as e:
@@ -399,7 +399,7 @@ class ImageProcessor:
             pil_mask = Image.fromarray(combined_mask)
             result = lama(pil_img, pil_mask)
             self.img = cv2.cvtColor(np.array(result), cv2.COLOR_RGB2BGR)
-            logger.info("Watermark removal complete ✅")
+            logger.info("Watermark removal complete ")
 
         except Exception as e:
             logger.error(f"Watermark removal failed: {e}")
@@ -517,7 +517,7 @@ class ImageProcessor:
 
             self.img = cv2.cvtColor(np.array(bg), cv2.COLOR_RGB2BGR)
 
-            logger.info("ISNet shadow removal complete ✅")
+            logger.info("ISNet shadow removal complete ")
 
         except Exception as e:
             logger.error(f"ISNet shadow removal failed: {e}")

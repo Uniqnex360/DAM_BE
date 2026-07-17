@@ -12,7 +12,7 @@ class Settings(BaseSettings):
     POSTGRES_PASSWORD: str = "password"
     POSTGRES_DB: str = "dam_db"
     DATABASE_URL: str = ""
-
+    HF_TOKEN: Optional[str] = None 
     SECRET_KEY: str = "unsafe_default_key_change_in_env"
     ALGORITHM: str = "HS256"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 60

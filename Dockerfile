@@ -8,37 +8,49 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     PIP_DISABLE_PIP_VERSION_CHECK=1
 
 WORKDIR /app
-
+ENV PYTHONPATH=/app
 RUN apt-get update && apt-get install -y --no-install-recommends \
     libgl1 \
     libglib2.0-0 \
+    libsm6 \
+    libxext6 \
+    libxrender-dev \
     curl \
     libtbb12 \
     libtbb-dev \
+    gcc \
+    g++ \
+    cmake \
+    python3-dev \
+    git \
     && rm -rf /var/lib/apt/lists/* \
     && apt-get clean
-
-# Do NOT download the ONNX model here – let the app download it at runtime
-# This saves ~180 MB in the image
-# RUN mkdir -p /root/.u2net \
-#     && curl -L https://github.com/danielgatis/rembg/releases/download/v0.0.0/u2net.onnx -o /root/.u2net/u2net.onnx
-
 COPY requirements.txt constraints.txt ./
 
-# Install typing-extensions and jinja2 first
 RUN pip install --no-cache-dir --no-compile typing-extensions==4.12.2 jinja2==3.1.3
 
-# Install torch (CPU version) – use EXISTING versions
 RUN pip install --no-cache-dir --no-compile \
     torch==2.2.1 \
     torchvision==0.17.1 \
     --extra-index-url https://download.pytorch.org/whl/cpu
 
-# Install tbb (though already installed via apt)
 RUN pip install --no-cache-dir --no-compile tbb
 
-# Install all other dependencies
-RUN pip install --no-cache-dir --no-compile -c constraints.txt -r requirements.txt
+RUN pip install --no-cache-dir trimesh omegaconf einops gradio-client>=1.3.0
+# RUN apt-get update && apt-get install -y --no-install-recommends \
+#     gcc g++ cmake git libgl1 libglib2.0-0
+
+# 2. Install Python Dependencies
+# RUN pip install --no-cache-dir trimesh omegaconf einops rembg
+
+# 3. Install torchmcubes (Required by TripoSR)
+RUN pip install --no-cache-dir git+https://github.com/tatsy/torchmcubes.git
+
+# 4. Clone TripoSR Source
+RUN git clone https://github.com/VAST-AI-Research/TripoSR.git /tmp/TripoSR && \
+   mv /tmp/TripoSR/tsr /usr/local/lib/python3.10/site-packages/tsr
+
+RUN pip install --no-cache-dir --no-compile -c constraints.txt -r requirements.txt --extra-index-url https://download.pytorch.org/whl/cpu
 
 COPY . .
 

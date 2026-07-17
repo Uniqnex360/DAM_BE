@@ -1,3 +1,4 @@
 .env*.onnx
 .u2net/
 .env
+node_modules
