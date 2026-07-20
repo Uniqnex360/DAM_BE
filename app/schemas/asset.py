@@ -1,6 +1,6 @@
 from pydantic import BaseModel
 from uuid import UUID
-from typing import Optional
+from typing import Optional,List
 from datetime import datetime
 
 class ImageResponse(BaseModel):
@@ -19,8 +19,12 @@ class BatchImageItem(BaseModel):
     url: str
     width: Optional[int] = None
     height: Optional[int] = None
+class FailedFile(BaseModel):
+    filename: str
+    error: str
 
 class BatchUploadResponse(BaseModel):
     upload_id: str
     images: list[BatchImageItem]
+    failed_uploads: List[FailedFile] = []
     status: str

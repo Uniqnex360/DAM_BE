@@ -29,14 +29,16 @@ from typing import List
 import httpx
 from fastapi.responses import FileResponse
 from starlette.background import BackgroundTask
-from sqlalchemy import select  
-from app.models.assets import Upload, Image 
+from sqlalchemy import select
+from app.models.assets import Upload, Image
 logger = logging.getLogger("assets")
 logger.setLevel(logging.INFO)
 router = APIRouter()
 PROCESSING_SEMAPHORE = asyncio.Semaphore(
     int(os.getenv("MAX_CONCURRENT_PROCESSING", "2"))
 )
+
+
 @router.post("/analyze")
 async def analyze_endpoint(request: AnalyzeRequest):
     try:
@@ -45,6 +47,8 @@ async def analyze_endpoint(request: AnalyzeRequest):
     except Exception as e:
         logger.error(f"Analysis Error: {e}")
         raise HTTPException(status_code=400, detail=str(e))
+
+
 @router.post("/upload", response_model=BatchUploadResponse)
 async def upload_asset(
     files: list[UploadFile] = File(...),
@@ -90,6 +94,7 @@ async def upload_asset(
     await db.commit()
     await db.refresh(upload_record)
     successful_uploads = 0
+    failed_uploads = []
     results = []
     for file in files:
         if file.content_type not in [
@@ -99,14 +104,16 @@ async def upload_asset(
             "application/pdf",
             "image/avif",
         ]:
-            raise HTTPException(
-                status_code=400,
-                detail=f"Invalid file type: {file.filename}",
-            )
+            failed_uploads.append({
+                'filename': file.filename,
+                'error': f"Invalid file type:{file.content_type}"
+            })
+            continue
+
         try:
             image_metadata = {}
             crop_info = crop_map.get(file.filename)
-            applied_steps_init = [] 
+            applied_steps_init = []
             if crop_info:
                 image_metadata["crop_mode"] = crop_info.get("cropMode")
                 image_metadata["target_aspect_ratio"] = crop_info.get(
@@ -151,6 +158,10 @@ async def upload_asset(
             successful_uploads += 1
         except Exception as e:
             logger.error(f"Failed to upload {file.filename}: {e}")
+            failed_uploads.append({
+                'filename': file.filename,
+                'error': str(e)
+            })
             continue
     if not results:
         await db.rollback()
@@ -167,8 +178,11 @@ async def upload_asset(
     return {
         "upload_id": str(upload_record.id),
         "images": results,
+        "failed_files": failed_uploads,
         "status": "uploaded",
     }
+
+
 @router.post("/{image_id}/process")
 async def process_image_asset(
     image_id: str,
@@ -185,7 +199,7 @@ async def process_image_asset(
         if not img_record:
             raise HTTPException(status_code=404, detail="Image not found")
         record_owner = str(img_record.user_id)
-        requester_id = str(target_user_id)  
+        requester_id = str(target_user_id)
         if record_owner != requester_id:
             if getattr(current_user, "role", None) != "admin":
                 raise HTTPException(status_code=403, detail="Not authorized")
@@ -202,21 +216,17 @@ async def process_image_asset(
             logger.exception("Image processing failed")
             traceback.print_exc()
             raise HTTPException(status_code=500, detail="Processing failed")
-        
+
+
 @router.get("/projects/{project_id}/download-zip")
 async def download_project_zip(
     project_id: str,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(deps.get_current_user),
 ):
-    """
-    Download all images for a project as a ZIP file.
-    We collect Images via Upload.project_id.
-    For each image, we prefer the processed URL if present,
-    otherwise we fall back to the original URL.
-    """
+
     result = await db.execute(
-    select(Upload).where(Upload.id == project_id)
+        select(Upload).where(Upload.id == project_id)
     )
     upload = result.scalars().first()
     if not upload:
@@ -224,16 +234,16 @@ async def download_project_zip(
     if str(upload.user_id) != str(current_user.id):
         raise HTTPException(status_code=403, detail="Not authorized")
     images_result = await db.execute(
-    select(Image).where(Image.upload_id == upload.id)
-)
+        select(Image).where(Image.upload_id == upload.id)
+    )
     images: List[Image] = images_result.scalars().all()
     if not images:
-        raise HTTPException(status_code=404, detail="No images for this project")
+        raise HTTPException(
+            status_code=404, detail="No images for this project")
     temp_dir = tempfile.mkdtemp(prefix=f"project-{project_id}-")
-        # 3) Decide ZIP filename (prefer real project name, then metadata project_name, then fallback)
+
     project_name: str | None = None
 
-    # If this upload is linked to a Project, use Project.name
     if upload.project_id:
         project_result = await db.execute(
             select(Project).where(Project.id == upload.project_id)
@@ -242,14 +252,11 @@ async def download_project_zip(
         if project and project.name:
             project_name = project.name
 
-    # If still no name, try the upload metadata (from upload_asset's metadata_obj)
     if not project_name and isinstance(upload.metadata_obj, dict):
         project_name = upload.metadata_obj.get("project_name")
 
-    # Final fallback: session-<upload_id>
     display_name = project_name or f"session-{upload.id}"
 
-    # Optional: sanitize to avoid problematic characters on some OSes
     safe_name = "".join(
         c if c not in ('\\', '/', ':', '*', '?', '"', '<', '>', '|')
         else "_"
@@ -274,7 +281,8 @@ async def download_project_zip(
                 if img.name:
                     filename = img.name
                 else:
-                    filename = source_url.rstrip("/").split("/")[-1] or f"{img.id}.jpg"
+                    filename = source_url.rstrip(
+                        "/").split("/")[-1] or f"{img.id}.jpg"
 
                 dot_idx = filename.rfind(".")
                 if dot_idx > 0:
@@ -292,13 +300,17 @@ async def download_project_zip(
                 zf.writestr(arcname, resp.content)
     if not os.path.exists(zip_path):
         shutil.rmtree(temp_dir, ignore_errors=True)
-        raise HTTPException(status_code=500, detail="Failed to create zip file")
+        raise HTTPException(
+            status_code=500, detail="Failed to create zip file")
     return FileResponse(
         path=zip_path,
         filename=f"{safe_name}.zip",
         media_type="application/zip",
-        background=BackgroundTask(lambda: shutil.rmtree(temp_dir, ignore_errors=True)),
+        background=BackgroundTask(
+            lambda: shutil.rmtree(temp_dir, ignore_errors=True)),
     )
+
+
 @router.get("/gallery")
 async def get_gallery(
     user_id: str = None,
@@ -353,3 +365,338 @@ async def get_gallery(
             status_code=500,
             detail=f"Failed to fetch gallery: {str(e)}",
         )
+@router.delete("/{image_id}")
+async def delete_image(
+    image_id: str,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(deps.get_current_user),
+):
+    """
+    Delete an image from the database and Cloudinary.
+    Only the owner or an admin can delete the image.
+    """
+    try:
+        
+        result = await db.execute(
+            select(Image).where(Image.id == image_id)
+        )
+        image = result.scalars().first()
+        
+        if not image:
+            raise HTTPException(
+                status_code=404, 
+                detail=f"Image with ID {image_id} not found"
+            )
+        
+        
+        is_owner = str(image.user_id) == str(current_user.id)
+        is_admin = getattr(current_user, "role", None) == "admin"
+        
+        if not is_owner and not is_admin:
+            raise HTTPException(
+                status_code=403, 
+                detail="Not authorized to delete this image"
+            )
+        
+        
+        urls_to_delete = []
+        if image.url:
+            urls_to_delete.append(image.url)
+        if image.processed_url and image.processed_url != image.url:
+            urls_to_delete.append(image.processed_url)
+        if image.thumbnail_url and image.thumbnail_url not in urls_to_delete:
+            urls_to_delete.append(image.thumbnail_url)
+        
+        
+        cloudinary_errors = []
+        for url in urls_to_delete:
+            try:
+                
+                public_id = extract_cloudinary_public_id(url)
+                if public_id:
+                    await delete_from_cloudinary(public_id)
+                    logger.info(f"Deleted from Cloudinary: {public_id}")
+            except Exception as e:
+                logger.error(f"Failed to delete from Cloudinary: {url} - {str(e)}")
+                cloudinary_errors.append(str(e))
+        
+        
+        image_name = image.name
+        await db.delete(image)
+        await db.commit()
+        
+        
+        logger.info(
+            f"Image {image_id} ({image_name}) deleted by user {current_user.id}"
+        )
+        
+        response_data = {
+            "message": f"Image '{image_name}' deleted successfully",
+            "image_id": image_id,
+            "deleted_from_cloudinary": len(urls_to_delete) - len(cloudinary_errors),
+            "cloudinary_errors": cloudinary_errors if cloudinary_errors else None
+        }
+        
+        return response_data
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.exception(f"Error deleting image {image_id}")
+        await db.rollback()
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to delete image: {str(e)}"
+        )
+
+
+@router.delete("/batch")
+async def batch_delete_images(
+    image_ids: List[str] = Body(..., embed=True),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(deps.get_current_user),
+):
+    """
+    Delete multiple images in batch.
+    Only owners or admins can delete images.
+    """
+    if not image_ids:
+        raise HTTPException(status_code=400, detail="No image IDs provided")
+    
+    if len(image_ids) > 50:  
+        raise HTTPException(
+            status_code=400, 
+            detail="Maximum 50 images can be deleted at once"
+        )
+    
+    try:
+        results = {
+            "successful": [],
+            "failed": [],
+            "total_requested": len(image_ids)
+        }
+        
+        for image_id in image_ids:
+            try:
+                
+                result = await db.execute(
+                    select(Image).where(Image.id == image_id)
+                )
+                image = result.scalars().first()
+                
+                if not image:
+                    results["failed"].append({
+                        "image_id": image_id,
+                        "error": "Image not found"
+                    })
+                    continue
+                
+                
+                is_owner = str(image.user_id) == str(current_user.id)
+                is_admin = getattr(current_user, "role", None) == "admin"
+                
+                if not is_owner and not is_admin:
+                    results["failed"].append({
+                        "image_id": image_id,
+                        "error": "Not authorized"
+                    })
+                    continue
+                
+                
+                urls_to_delete = []
+                if image.url:
+                    urls_to_delete.append(image.url)
+                if image.processed_url and image.processed_url != image.url:
+                    urls_to_delete.append(image.processed_url)
+                if image.thumbnail_url and image.thumbnail_url not in urls_to_delete:
+                    urls_to_delete.append(image.thumbnail_url)
+                
+                for url in urls_to_delete:
+                    try:
+                        public_id = extract_cloudinary_public_id(url)
+                        if public_id:
+                            await delete_from_cloudinary(public_id)
+                    except Exception as e:
+                        logger.error(f"Cloudinary deletion failed for {url}: {e}")
+                
+                
+                image_name = image.name
+                await db.delete(image)
+                
+                results["successful"].append({
+                    "image_id": image_id,
+                    "name": image_name
+                })
+                
+            except Exception as e:
+                logger.error(f"Failed to delete image {image_id}: {e}")
+                results["failed"].append({
+                    "image_id": image_id,
+                    "error": str(e)
+                })
+        
+        
+        await db.commit()
+        
+        logger.info(
+            f"Batch deletion: {len(results['successful'])} succeeded, "
+            f"{len(results['failed'])} failed out of {len(image_ids)} requested"
+        )
+        
+        return results
+        
+    except Exception as e:
+        logger.exception("Batch deletion failed")
+        await db.rollback()
+        raise HTTPException(
+            status_code=500,
+            detail=f"Batch deletion failed: {str(e)}"
+        )
+
+
+@router.delete("/upload/{upload_id}")
+async def delete_upload_and_images(
+    upload_id: str,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(deps.get_current_user),
+):
+    
+    try:
+        
+        result = await db.execute(
+            select(Upload).where(Upload.id == upload_id)
+        )
+        upload = result.scalars().first()
+        
+        if not upload:
+            raise HTTPException(
+                status_code=404,
+                detail=f"Upload session {upload_id} not found"
+            )
+        
+        
+        is_owner = str(upload.user_id) == str(current_user.id)
+        is_admin = getattr(current_user, "role", None) == "admin"
+        
+        if not is_owner and not is_admin:
+            raise HTTPException(
+                status_code=403,
+                detail="Not authorized to delete this upload session"
+            )
+        
+        
+        images_result = await db.execute(
+            select(Image).where(Image.upload_id == upload.id)
+        )
+        images = images_result.scalars().all()
+        
+        
+        deleted_count = 0
+        failed_count = 0
+        
+        for image in images:
+            try:
+                
+                urls_to_delete = []
+                if image.url:
+                    urls_to_delete.append(image.url)
+                if image.processed_url and image.processed_url != image.url:
+                    urls_to_delete.append(image.processed_url)
+                if image.thumbnail_url and image.thumbnail_url not in urls_to_delete:
+                    urls_to_delete.append(image.thumbnail_url)
+                
+                for url in urls_to_delete:
+                    try:
+                        public_id = extract_cloudinary_public_id(url)
+                        if public_id:
+                            await delete_from_cloudinary(public_id)
+                    except Exception as e:
+                        logger.error(f"Cloudinary deletion failed: {e}")
+                
+                
+                await db.delete(image)
+                deleted_count += 1
+                
+            except Exception as e:
+                logger.error(f"Failed to delete image {image.id}: {e}")
+                failed_count += 1
+        
+        
+        await db.delete(upload)
+        await db.commit()
+        
+        logger.info(
+            f"Upload session {upload_id} deleted: "
+            f"{deleted_count} images deleted, {failed_count} failed"
+        )
+        
+        return {
+            "message": f"Upload session deleted successfully",
+            "upload_id": upload_id,
+            "images_deleted": deleted_count,
+            "images_failed": failed_count
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.exception(f"Error deleting upload session {upload_id}")
+        await db.rollback()
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to delete upload session: {str(e)}"
+        )
+
+
+
+
+def extract_cloudinary_public_id(url: str) -> str:
+    
+    try:
+        if not url or "cloudinary" not in url:
+            return None
+        
+        
+        parts = url.split("upload/")
+        if len(parts) < 2:
+            return None
+        
+        
+        after_upload = parts[1]
+        version_parts = after_upload.split("/", 1)
+        
+        if len(version_parts) < 2:
+            return None
+        
+        
+        public_id_with_ext = version_parts[1]
+        public_id = public_id_with_ext.rsplit(".", 1)[0]
+        
+        return public_id
+        
+    except Exception as e:
+        logger.error(f"Failed to extract public_id from URL {url}: {e}")
+        return None
+
+
+async def delete_from_cloudinary(public_id: str) -> bool:
+   
+    import cloudinary
+    import cloudinary.uploader
+    
+    try:
+        result = cloudinary.uploader.destroy(public_id)
+        
+        if result.get("result") == "ok":
+            logger.info(f"Successfully deleted from Cloudinary: {public_id}")
+            return True
+        else:
+            logger.warning(
+                f"Cloudinary deletion returned: {result.get('result')} "
+                f"for {public_id}"
+            )
+            return False
+            
+    except Exception as e:
+        logger.error(f"Cloudinary deletion error for {public_id}: {e}")
+        raise
