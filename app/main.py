@@ -3,9 +3,13 @@ import uvicorn
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.core.config import settings
-from app.api.v1.router import api_router 
-from fastapi.staticfiles import StaticFiles
 
+import huggingface_hub
+if not hasattr(huggingface_hub, "cached_download"):
+    huggingface_hub.cached_download = huggingface_hub.hf_hub_download
+
+from app.api.v1.router import api_router
+from fastapi.staticfiles import StaticFiles
 app = FastAPI(
     title=settings.PROJECT_NAME,
     openapi_url=f"{settings.API_V1_STR}/openapi.json"
@@ -37,7 +41,6 @@ def root():
         "health": "/health"
     }
 
-app.mount("/static", StaticFiles(directory="static"), name="static")
 app.include_router(api_router, prefix=settings.API_V1_STR) 
 
 @app.get("/health")

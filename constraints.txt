@@ -1,7 +1,6 @@
-gradio==3.50.2
-transformers>=4.38.2
+transformers>=4.44.0,<4.50.0
 tokenizers>=0.15.2
 numpy>=1.24.3
 Pillow>=9.5.0
-torch==2.2.1
-torchvision==0.17.1
+torch==2.4.1
+torchvision==0.19.1

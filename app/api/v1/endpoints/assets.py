@@ -4,6 +4,7 @@ import os
 import traceback
 import asyncio
 import uuid
+from datetime import timedelta
 from fastapi import APIRouter, Depends, UploadFile, File, HTTPException, Body, Form
 from fastapi.concurrency import run_in_threadpool
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -264,7 +265,7 @@ async def download_project_zip(
     )
 
     temp_dir = tempfile.mkdtemp(prefix=f"session-{upload.id}-")
-    zip_path = os.path.join(temp_dir, f"{safe_name}.zip")
+    zip_path = os.path.join(temp_dir, f"{safe_name}_output.zip")
     async with httpx.AsyncClient(timeout=60.0) as client:
         seen_names: dict[str, int] = {}
         with zipfile.ZipFile(zip_path, mode="w", compression=zipfile.ZIP_DEFLATED) as zf:
@@ -304,7 +305,8 @@ async def download_project_zip(
             status_code=500, detail="Failed to create zip file")
     return FileResponse(
         path=zip_path,
-        filename=f"{safe_name}.zip",
+        filename=f"{safe_name}_output.zip",
+
         media_type="application/zip",
         background=BackgroundTask(
             lambda: shutil.rmtree(temp_dir, ignore_errors=True)),
@@ -371,10 +373,7 @@ async def delete_image(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(deps.get_current_user),
 ):
-    """
-    Delete an image from the database and Cloudinary.
-    Only the owner or an admin can delete the image.
-    """
+    
     try:
         
         result = await db.execute(
@@ -456,10 +455,7 @@ async def batch_delete_images(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(deps.get_current_user),
 ):
-    """
-    Delete multiple images in batch.
-    Only owners or admins can delete images.
-    """
+    
     if not image_ids:
         raise HTTPException(status_code=400, detail="No image IDs provided")
     
@@ -677,7 +673,107 @@ def extract_cloudinary_public_id(url: str) -> str:
     except Exception as e:
         logger.error(f"Failed to extract public_id from URL {url}: {e}")
         return None
+from app.services.depth_generator import ThreeDGenerator
 
+@router.post("/{image_id}/generate-3d")
+async def generate_3d_from_image(
+    image_id: str,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(deps.get_current_user),
+):
+    """
+    Generate a 3D model from a single image using AI reconstruction.
+    Uses Stability AI Stable Fast 3D via Hugging Face.
+    Returns a GLB file URL uploaded to Cloudinary.
+    """
+    try:
+        # 1. Get the image record
+        result = await db.execute(
+            select(Image).where(Image.id == image_id)
+        )
+        image = result.scalars().first()
+        
+        if not image:
+            raise HTTPException(status_code=404, detail="Image not found")
+        
+        # Check authorization
+        is_owner = str(image.user_id) == str(current_user.id)
+        is_admin = getattr(current_user, "role", None) == "admin"
+        
+        if not is_owner and not is_admin:
+            raise HTTPException(status_code=403, detail="Not authorized")
+        
+        # 2. Download the image from Cloudinary/URL
+        source_url = image.processed_url or image.url
+        if not source_url:
+            raise HTTPException(status_code=400, detail="No image URL available")
+        
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            resp = await client.get(source_url)
+            resp.raise_for_status()
+            image_bytes = resp.content
+        
+        # 3. Generate 3D mesh using Stability AI
+        logger.info(f"Starting 3D generation for image {image_id}")
+        
+        generator = ThreeDGenerator()
+        mesh_bytes = await run_in_threadpool(
+            generator.generate_3d_mesh,
+            image_bytes,
+            max_retries=3,
+            timeout=120  # 3D generation can take a while
+        )
+        
+        # 4. Upload the 3D model to Cloudinary
+        target_user_id = str(image.user_id)
+        unique_filename = f"{target_user_id}/3d/{uuid.uuid4()}.glb"
+        
+        mesh_result = upload_image_to_cloudinary(
+            mesh_bytes,
+            unique_filename,
+            resource_type="raw"  # GLB is not an image
+        )
+        
+        model_url = mesh_result.get("secure_url")
+        
+        if not model_url:
+            raise HTTPException(status_code=500, detail="Failed to upload 3D model")
+        
+        # 5. Update image record with 3D model info
+        exif_data = image.exif_data or {}
+        exif_data["3d_model"] = {
+            "model_url": model_url,
+            "generated_at": str(datetime.utcnow()),
+            "format": "glb",
+            "engine": "stable-fast-3d",
+        }
+        image.exif_data = exif_data
+        
+        # Track in applied steps
+        steps = image.applied_steps or []
+        if "3d_generate" not in steps:
+            steps.append("3d_generate")
+        image.applied_steps = steps
+        
+        await db.commit()
+        
+        logger.info(f"3D model generated for {image_id}: {model_url}")
+        
+        return {
+            "image_id": image_id,
+            "model_url": model_url,
+            "status": "completed",
+            "format": "glb",
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.exception(f"3D generation failed for {image_id}: {e}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"3D generation failed: {str(e)}"
+        )
 
 async def delete_from_cloudinary(public_id: str) -> bool:
    

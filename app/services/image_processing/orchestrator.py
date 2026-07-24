@@ -85,7 +85,7 @@ class   ImageProcessor:
         start_time = time.time()
         self.resize_results = None
         steps_applied = []
-        messages = []  # ← INITIALIZE HERE so it's always in scope
+        messages = []  
 
         confidence = self._analyzer.analyze(
             self.img, self.original_img, self.resize_dims, self.operations
