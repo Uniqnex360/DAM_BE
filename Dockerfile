@@ -34,7 +34,6 @@ RUN pip install --no-cache-dir --no-compile tbb
 RUN pip install --no-cache-dir git+https://github.com/tatsy/torchmcubes.git
 RUN git clone https://github.com/VAST-AI-Research/TripoSR.git /tmp/TripoSR && \
    mv /tmp/TripoSR/tsr /usr/local/lib/python3.10/site-packages/tsr
-RUN pip install --no-cache-dir --no-build-isolation "git+https://github.com/facebookresearch/sam2.git"
 RUN pip install --no-cache-dir --no-compile -c constraints.txt -r requirements.txt --extra-index-url https://download.pytorch.org/whl/cpu
 RUN mkdir -p /root/.cache/torch/hub/checkpoints && \
     curl -L --retry 3 -o /root/.cache/torch/hub/checkpoints/big-lama.pt \
