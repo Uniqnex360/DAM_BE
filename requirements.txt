@@ -40,3 +40,5 @@ simple_lama_inpainting==0.1.2
 ultralytics==8.3.0
 gradio==5.1.0
 gradio_client==1.4.0
+
+segmentation-models-pytorch>=0.3.0

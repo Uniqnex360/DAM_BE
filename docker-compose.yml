@@ -10,6 +10,7 @@ services:
       
       # - ~/.u2net:/root/.u2net 
     environment:
+      - OPENAI_API_KEY=${OPENAI_API_KEY} 
       - POSTGRES_SERVER=analyzer_db
       - REDIS_HOST=analyzer_redis
       - PROJECT_NAME=${PROJECT_NAME}

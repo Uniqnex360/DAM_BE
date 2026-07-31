@@ -658,6 +658,26 @@ class ImageProcessor:
             if "bg-remove" in self.operations:
                 self.clean_background()
                 steps_applied.append("bg_removal")
+            if "smart-frame" in self.operations:
+                steps_applied.append("smart-frame")
+            
+            if "infographic" in self.operations:
+                steps_applied.append("infographic")
+            
+            if "3d-model" in self.operations:
+                steps_applied.append("3d_generate")
+            
+            if "lifestyle" in self.operations:
+                steps_applied.append("lifestyle")
+            
+            if "swatch" in self.operations:
+                steps_applied.append("swatch")
+            
+            if "line-diagram" in self.operations:
+                steps_applied.append("line_diagram")
+            
+            if "compress" in self.operations:
+                steps_applied.append("compress")
             if self.resize_dims:
                 result = self.resize_ecom()
                 if isinstance(result, list):

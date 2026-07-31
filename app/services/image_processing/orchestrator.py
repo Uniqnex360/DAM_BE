@@ -1,7 +1,7 @@
 import logging
 import time
 from typing import Dict, Optional
-
+import numpy as np
 from .analyzer import ImageAnalyzer
 from .exceptions import StepSkippedException
 from app.services.image_processing.steps.room_visualizer import RoomVisualizerStep
@@ -90,6 +90,7 @@ class   ImageProcessor:
         confidence = self._analyzer.analyze(
             self.img, self.original_img, self.resize_dims, self.operations
         )
+        logger.error(f"PROCESSOR: operations={self.operations}, autoDetect={self.auto_detect}")
 
         if self.crop_mode == "preset" and self.target_aspect_ratio:
             self.img = crop_to_aspect_ratio(self.img, self.target_aspect_ratio)
@@ -115,8 +116,16 @@ class   ImageProcessor:
                 steps_applied.append("geometry_reconstruction")
 
             if "watermark-remove" in self.operations:
-                step = self._registry.get_step("watermark-remove")()
-                self.img = step.process(self.img, self.original_img)
+                logger.error("WATERMARK BRANCH ENTERED")
+                try:
+                    step = self._registry.get_step("watermark-remove")()
+                    logger.error(f"WATERMARK STEP CLASS: {type(step).__name__}")
+                    self.img = step.process(self.img, self.original_img)
+                    steps_applied.append("watermark_removal")
+                    logger.error("WATERMARK BRANCH COMPLETED")
+                except Exception as e:
+                    logger.exception(f"WATERMARK STEP FAILED: {e}")
+                    raise
 
             if "retouch" in self.operations:
                 step = self._registry.get_step("retouch")()
@@ -154,7 +163,11 @@ class   ImageProcessor:
 
         if self.resize_results is None and "resize" not in steps_applied:
             if self.crop_mode != "preset":
-                cur_h, cur_w = self.img.shape[:2]
+                if isinstance(self.img, np.ndarray):
+                    cur_h, cur_w = self.img.shape[:2]
+                else:
+                    # self.img is a PIL Image object
+                    cur_w, cur_h = self.img.size
                 if (cur_w, cur_h) != (self.target_w, self.target_h):
                     self.img = upscale_to_size(
                         self.img, self.target_w, self.target_h)

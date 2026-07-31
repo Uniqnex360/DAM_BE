@@ -34,7 +34,20 @@ RUN pip install --no-cache-dir --no-compile tbb
 RUN pip install --no-cache-dir git+https://github.com/tatsy/torchmcubes.git
 RUN git clone https://github.com/VAST-AI-Research/TripoSR.git /tmp/TripoSR && \
    mv /tmp/TripoSR/tsr /usr/local/lib/python3.10/site-packages/tsr
+RUN pip install --no-cache-dir --no-build-isolation "git+https://github.com/facebookresearch/sam2.git"
 RUN pip install --no-cache-dir --no-compile -c constraints.txt -r requirements.txt --extra-index-url https://download.pytorch.org/whl/cpu
+RUN mkdir -p /root/.cache/torch/hub/checkpoints && \
+    curl -L --retry 3 -o /root/.cache/torch/hub/checkpoints/big-lama.pt \
+    https://github.com/enesmsahin/simple-lama-inpainting/releases/download/v0.1.0/big-lama.pt
+RUN python -c "from huggingface_hub import snapshot_download; snapshot_download('microsoft/Florence-2-large')"
+
+# Pre-download YOLO watermark detector
+RUN python -c "from huggingface_hub import hf_hub_download; hf_hub_download(repo_id='qfisch/yolov8n-watermark-detection', filename='best.pt')"
+
+# Pre-download 7 watermark segmenters
+RUN for spec in logo centered_text overlay_text repeated_text tiny_corner line_pattern universal; do \
+        python -c "from huggingface_hub import hf_hub_download; hf_hub_download(repo_id='christophernavas/watermark-remover', filename='segmenter_${spec}.pth')"; \
+    done
 COPY . .
 RUN mkdir -p app/static/uploads app/static/processed app/static/rooms
 CMD sh -c "alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port ${PORT} --workers 1"

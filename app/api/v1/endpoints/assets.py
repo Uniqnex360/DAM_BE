@@ -9,6 +9,7 @@ from fastapi import APIRouter, Depends, UploadFile, File, HTTPException, Body, F
 from fastapi.concurrency import run_in_threadpool
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func
+from datetime import datetime
 from app.api import deps
 from app.db.session import get_db
 from app.models.auth import User
@@ -681,13 +682,9 @@ async def generate_3d_from_image(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(deps.get_current_user),
 ):
-    """
-    Generate a 3D model from a single image using AI reconstruction.
-    Uses Stability AI Stable Fast 3D via Hugging Face.
-    Returns a GLB file URL uploaded to Cloudinary.
-    """
+  
     try:
-        # 1. Get the image record
+        
         result = await db.execute(
             select(Image).where(Image.id == image_id)
         )
@@ -696,14 +693,14 @@ async def generate_3d_from_image(
         if not image:
             raise HTTPException(status_code=404, detail="Image not found")
         
-        # Check authorization
+        
         is_owner = str(image.user_id) == str(current_user.id)
         is_admin = getattr(current_user, "role", None) == "admin"
         
         if not is_owner and not is_admin:
             raise HTTPException(status_code=403, detail="Not authorized")
         
-        # 2. Download the image from Cloudinary/URL
+        
         source_url = image.processed_url or image.url
         if not source_url:
             raise HTTPException(status_code=400, detail="No image URL available")
@@ -713,7 +710,7 @@ async def generate_3d_from_image(
             resp.raise_for_status()
             image_bytes = resp.content
         
-        # 3. Generate 3D mesh using Stability AI
+        
         logger.info(f"Starting 3D generation for image {image_id}")
         
         generator = ThreeDGenerator()
@@ -721,17 +718,17 @@ async def generate_3d_from_image(
             generator.generate_3d_mesh,
             image_bytes,
             max_retries=3,
-            timeout=120  # 3D generation can take a while
+            timeout=120  
         )
         
-        # 4. Upload the 3D model to Cloudinary
+        
         target_user_id = str(image.user_id)
         unique_filename = f"{target_user_id}/3d/{uuid.uuid4()}.glb"
         
         mesh_result = upload_image_to_cloudinary(
             mesh_bytes,
             unique_filename,
-            resource_type="raw"  # GLB is not an image
+            resource_type="raw"  
         )
         
         model_url = mesh_result.get("secure_url")
@@ -739,7 +736,7 @@ async def generate_3d_from_image(
         if not model_url:
             raise HTTPException(status_code=500, detail="Failed to upload 3D model")
         
-        # 5. Update image record with 3D model info
+        
         exif_data = image.exif_data or {}
         exif_data["3d_model"] = {
             "model_url": model_url,
@@ -749,7 +746,7 @@ async def generate_3d_from_image(
         }
         image.exif_data = exif_data
         
-        # Track in applied steps
+        
         steps = image.applied_steps or []
         if "3d_generate" not in steps:
             steps.append("3d_generate")

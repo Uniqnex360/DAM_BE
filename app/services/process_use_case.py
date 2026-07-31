@@ -104,8 +104,82 @@ class ProcessImageUseCase:
                 proc_result["steps_applied"],
                 proc_result["duration_ms"],
             )
+            if "infographic" in operations:
+                from app.services.infographic_generator import InfographicGenerator
+                
+                generator = InfographicGenerator()
+                
+                # Get the processed image bytes (after bg-remove, resize, etc.)
+                source_image = proc_result.get("image_bytes")
+                
+                # Generate infographic
+                infographic_bytes = await generator.generate(
+                    image_bytes=source_image,
+                    product_name=img_record.name,
+                    options=options.get("infographic_options", {})
+                )
+                
+                # Upload to Cloudinary
+                infographic_filename = f"infographic/{img_record.user_id}/{image_id}.png"
+                upload_res = upload_image_to_cloudinary(
+                    infographic_bytes, 
+                    infographic_filename,
+                    resource_type="image"
+                )
+                
+                processed_url = upload_res.get("secure_url")
+                
+                response = {
+                    "status": "completed",
+                    "url": processed_url,
+                    "name": f"{img_record.name}_infographic",
+                    "telemetry": {
+                        "confidence": proc_result["confidence"],
+                        "steps": proc_result["steps_applied"] + ["infographic"],
+                        "time_ms": proc_result["duration_ms"],
+                    },
+                }
+            # In execute() method, after the infographic block
 
-            
+            if "smart-frame" in operations:
+                from app.services.smart_frame import SmartFrameFit
+                
+                processor = SmartFrameFit()
+                
+                # Get frame options from the request
+                frame_options = options.get("smart_frame", {})
+                
+                # Use the already-processed image (after bg-remove, etc.)
+                source_bytes = proc_result.get("image_bytes")
+                
+                frame_bytes = processor.process(
+                    image_bytes=source_bytes,
+                    output_width=frame_options.get("width", 1200),
+                    output_height=frame_options.get("height", 1200),
+                    frame_inset=frame_options.get("inset", 40),
+                    background_color=frame_options.get("background", "#FFFFFF"),
+                )
+                
+                # Upload to Cloudinary
+                frame_filename = f"framed/{img_record.user_id}/{image_id}.png"
+                upload_res = upload_image_to_cloudinary(
+                    frame_bytes,
+                    frame_filename,
+                    resource_type="image"
+                )
+                
+                processed_url = upload_res.get("secure_url")
+                
+                response = {
+                    "status": "completed",
+                    "url": processed_url,
+                    "name": img_record.name,
+                    "telemetry": {
+                        "confidence": proc_result["confidence"],
+                        "steps": proc_result["steps_applied"] + ["smart-frame"],
+                        "time_ms": proc_result["duration_ms"],
+                    },
+                }
             unfinished = await self._repo.unfinished_count(img_record.upload_id)
             if unfinished == 0 and upload:
                 await self._repo.complete_upload(upload)
