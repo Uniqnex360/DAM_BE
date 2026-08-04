@@ -40,7 +40,7 @@ RUN mkdir -p /root/.cache/torch/hub/checkpoints && \
     curl -L --retry 3 -o /root/.cache/torch/hub/checkpoints/big-lama.pt \
     https://github.com/enesmsahin/simple-lama-inpainting/releases/download/v0.1.0/big-lama.pt
 RUN python -c "from huggingface_hub import snapshot_download; snapshot_download('microsoft/Florence-2-large')"
-
+RUN python -c "import easyocr; reader = easyocr.Reader(['en']); del reader"
 # Pre-download YOLO watermark detector
 RUN python -c "from huggingface_hub import hf_hub_download; hf_hub_download(repo_id='qfisch/yolov8n-watermark-detection', filename='best.pt')"
 

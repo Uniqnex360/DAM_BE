@@ -88,7 +88,7 @@ services:
     deploy:
       resources:
         limits:
-          memory: 4G
+          memory: 6G 
         reservations:
           memory: 2G
     depends_on:
