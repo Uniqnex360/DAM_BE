@@ -1,3 +1,59 @@
+# services:
+#   backend:
+#     build: .
+#     container_name: analyzer_api
+#     ports:
+#      - "127.0.0.1:8002:10000"
+#     volumes:
+#       - .:/app  
+#       - rembg_cache:/root/.u2net 
+      
+#       # - ~/.u2net:/root/.u2net 
+#     environment:
+#       - OPENAI_API_KEY=${OPENAI_API_KEY} 
+#       - POSTGRES_SERVER=analyzer_db
+#       - REDIS_HOST=analyzer_redis
+#       - PROJECT_NAME=${PROJECT_NAME}
+#       - API_V1_STR=${API_V1_STR}
+#       - POSTGRES_USER=${POSTGRES_USER}
+#       - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+#       - POSTGRES_DB=${POSTGRES_DB}
+#       - HF_TOKEN=${HF_TOKEN}
+#       - DATABASE_URL=${DATABASE_URL}
+#       - SECRET_KEY=${SECRET_KEY}
+#       - ALGORITHM=${ALGORITHM}
+#       - ACCESS_TOKEN_EXPIRE_MINUTES=${ACCESS_TOKEN_EXPIRE_MINUTES}
+#       - STORAGE_PROVIDER=${STORAGE_PROVIDER}
+#       - CLOUDINARY_CLOUD_NAME=${CLOUDINARY_CLOUD_NAME}
+#       - CLOUDINARY_API_KEY=${CLOUDINARY_API_KEY}
+#       - CLOUDINARY_API_SECRET=${CLOUDINARY_API_SECRET}
+#       - CLOUDINARY_UPLOAD_PRESET=${CLOUDINARY_UPLOAD_PRESET}
+#     depends_on:
+#       - analyzer_db
+#       - analyzer_redis
+
+#   analyzer_db:
+#     image: postgres:15-alpine
+#     restart: always
+#     environment:
+#       - POSTGRES_USER=${POSTGRES_USER}
+#       - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+#       - POSTGRES_DB=${POSTGRES_DB}
+#     ports:
+#       - "5435:5432"
+#     volumes:
+#       - analyzer_data:/var/lib/postgresql/data
+
+#   analyzer_redis:
+#     image: redis:7-alpine
+#     container_name: analyzer_redis
+#     restart: always
+#     ports:
+#       - "6380:6379" 
+
+# volumes:
+#   analyzer_data: 
+#   rembg_cache:
 services:
   backend:
     build: .
@@ -7,8 +63,6 @@ services:
     volumes:
       - .:/app  
       - rembg_cache:/root/.u2net 
-      
-      # - ~/.u2net:/root/.u2net 
     environment:
       - OPENAI_API_KEY=${OPENAI_API_KEY} 
       - POSTGRES_SERVER=analyzer_db
@@ -28,6 +82,15 @@ services:
       - CLOUDINARY_API_KEY=${CLOUDINARY_API_KEY}
       - CLOUDINARY_API_SECRET=${CLOUDINARY_API_SECRET}
       - CLOUDINARY_UPLOAD_PRESET=${CLOUDINARY_UPLOAD_PRESET}
+      - MAX_CONCURRENT_PROCESSING=1
+      - OMP_NUM_THREADS=2
+      - MKL_NUM_THREADS=2
+    deploy:
+      resources:
+        limits:
+          memory: 4G
+        reservations:
+          memory: 2G
     depends_on:
       - analyzer_db
       - analyzer_redis
@@ -43,6 +106,10 @@ services:
       - "5435:5432"
     volumes:
       - analyzer_data:/var/lib/postgresql/data
+    deploy:
+      resources:
+        limits:
+          memory: 512M
 
   analyzer_redis:
     image: redis:7-alpine
@@ -50,6 +117,10 @@ services:
     restart: always
     ports:
       - "6380:6379" 
+    deploy:
+      resources:
+        limits:
+          memory: 256M
 
 volumes:
   analyzer_data: 

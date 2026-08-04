@@ -90,7 +90,7 @@ class   ImageProcessor:
         confidence = self._analyzer.analyze(
             self.img, self.original_img, self.resize_dims, self.operations
         )
-        logger.error(f"PROCESSOR: operations={self.operations}, autoDetect={self.auto_detect}")
+        logger.info(f"PROCESSOR: operations={self.operations}, autoDetect={self.auto_detect}")
 
         if self.crop_mode == "preset" and self.target_aspect_ratio:
             self.img = crop_to_aspect_ratio(self.img, self.target_aspect_ratio)
@@ -116,13 +116,13 @@ class   ImageProcessor:
                 steps_applied.append("geometry_reconstruction")
 
             if "watermark-remove" in self.operations:
-                logger.error("WATERMARK BRANCH ENTERED")
+                logger.info("Watermark removal branch entered")
                 try:
                     step = self._registry.get_step("watermark-remove")()
-                    logger.error(f"WATERMARK STEP CLASS: {type(step).__name__}")
+                    logger.info(f"Watermark step class: {type(step).__name__}")
                     self.img = step.process(self.img, self.original_img)
                     steps_applied.append("watermark_removal")
-                    logger.error("WATERMARK BRANCH COMPLETED")
+                    logger.info("Watermark removal branch completed")
                 except Exception as e:
                     logger.exception(f"WATERMARK STEP FAILED: {e}")
                     raise

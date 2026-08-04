@@ -1,4 +1,13 @@
-.env*.onnx
+venv/
+__pycache__/
+*.pyc
+*.onnx
 .u2net/
+node_modules/
 .env
-node_modules
+auto_templates/
+scripts/
+rembg_cache/
+analyzer_data/
+.DS_Store
+logging

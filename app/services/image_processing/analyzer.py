@@ -27,4 +27,39 @@ class ImageAnalyzer:
         shadow_ratio = np.sum(shadow_mask) / (h * w)
         conf["shadow"] = np.clip(shadow_ratio * 40, 0, 1)
 
+        conf["watermark"] = self._watermark_confidence(gray, hsv, h, w)
+
         return conf
+
+    def _watermark_confidence(self, gray: np.ndarray, hsv: np.ndarray, h: int, w: int) -> float:
+        corner_h = min(80, h // 4)
+        corner_w = min(80, w // 4)
+
+        corners = [
+            gray[:corner_h, :corner_w],
+            gray[:corner_h, -corner_w:],
+            gray[-corner_h:, :corner_w],
+            gray[-corner_h:, -corner_w:],
+        ]
+
+        corner_scores = []
+        for corner in corners:
+            if corner.size == 0:
+                continue
+            corner_std = np.std(corner)
+            corner_mean = np.mean(corner)
+            if corner_std > 15 and corner_mean < 240:
+                corner_scores.append(min(1.0, corner_std / 40.0))
+
+        if not corner_scores:
+            return 0.0
+
+        corner_score = np.mean(corner_scores)
+
+        v = hsv[:, :, 2]
+        mean_v = np.mean(v) if np.mean(v) > 0 else 1
+        bright_mask = (v > 0.85 * mean_v) & (v < mean_v)
+        bright_ratio = np.sum(bright_mask) / (h * w)
+        bright_score = np.clip(bright_ratio * 20, 0, 1)
+
+        return np.clip(corner_score * 0.6 + bright_score * 0.4, 0, 1)

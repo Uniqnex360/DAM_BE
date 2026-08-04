@@ -97,13 +97,7 @@ class ProcessImageUseCase:
                     },
                 }
 
-            await self._repo.complete_image(
-                img_record,
-                processed_url,
-                proc_result["confidence"],
-                proc_result["steps_applied"],
-                proc_result["duration_ms"],
-            )
+           
             if "infographic" in operations:
                 from app.services.infographic_generator import InfographicGenerator
                 
@@ -181,6 +175,13 @@ class ProcessImageUseCase:
                     },
                 }
             unfinished = await self._repo.unfinished_count(img_record.upload_id)
+            await self._repo.complete_image(
+                            img_record,
+                            processed_url,
+                            proc_result["confidence"],
+                            proc_result["steps_applied"],
+                            proc_result["duration_ms"],
+                        )
             if unfinished == 0 and upload:
                 await self._repo.complete_upload(upload)
 

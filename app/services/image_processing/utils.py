@@ -7,7 +7,8 @@ import numpy as np
 from PIL import Image
 import pillow_heif
 pillow_heif.register_heif_opener()
-pillow_heif.register_avif_opener()
+if hasattr(pillow_heif, "register_avif_opener"):
+    pillow_heif.register_avif_opener()
 
 logger = logging.getLogger(__name__)
 

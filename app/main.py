@@ -55,7 +55,7 @@ import logging
 import uvicorn
 import asyncio
 from contextlib import asynccontextmanager
-
+import sys
 import huggingface_hub
 if not hasattr(huggingface_hub, "cached_download"):
     huggingface_hub.cached_download = huggingface_hub.hf_hub_download
@@ -66,13 +66,17 @@ from fastapi.staticfiles import StaticFiles
 
 from app.api.v1.router import api_router
 from app.core.config import settings
-
-# ── Logging config: fixes the per-module WARNING bug ───────────────────────
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+    handlers=[logging.StreamHandler(sys.stdout)],
+    force=True  # Ensures existing handlers are overridden
 )
+
+# Explicitly ensure all sub-loggers in the "app" package print INFO messages
+logging.getLogger("app").setLevel(logging.INFO)
 logger = logging.getLogger(__name__)
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     from app.services.image_processing.model_registry import (
@@ -134,4 +138,5 @@ def health_check():
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 8000))
-    uvicorn.run("app.main:app", host="0.0.0.0", port=port, reload=False)
+    # Added log_level="info" to instruct uvicorn to pass INFO logs
+    uvicorn.run("app.main:app", host="0.0.0.0", port=port, reload=False, log_level="info")

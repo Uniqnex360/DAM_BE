@@ -48,9 +48,9 @@ def get_iopaint() -> ModelManager:
     if _iopaint is None:
         with _locks["iopaint"]:
             if _iopaint is None:
-                _iopaint = ModelManager(name="sd2", device="cpu")
+                # CHANGED FROM "sd2" to "lama"
+                _iopaint = ModelManager(name="lama", device="cpu")
     return _iopaint
-
 from transformers import AutoProcessor, AutoModelForCausalLM
 import torch
 
