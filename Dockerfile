@@ -25,15 +25,15 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && apt-get clean
 COPY requirements.txt constraints.txt ./
 RUN pip install --no-cache-dir --no-compile typing-extensions==4.12.2 jinja2==3.1.3
-RUN git clone https://github.com/TencentARC/InstantMesh.git /opt/InstantMesh
+# RUN git clone https://github.com/TencentARC/InstantMesh.git /opt/InstantMesh
 RUN pip install --no-cache-dir --no-compile \
      torch==2.4.1 \
     torchvision==0.19.1 \
     --extra-index-url https://download.pytorch.org/whl/cpu
-RUN pip install --no-cache-dir --no-compile tbb
-RUN pip install --no-cache-dir git+https://github.com/tatsy/torchmcubes.git
-RUN git clone https://github.com/VAST-AI-Research/TripoSR.git /tmp/TripoSR && \
-   mv /tmp/TripoSR/tsr /usr/local/lib/python3.10/site-packages/tsr
+# RUN pip install --no-cache-dir --no-compile tbb
+# RUN pip install --no-cache-dir git+https://github.com/tatsy/torchmcubes.git
+# RUN git clone https://github.com/VAST-AI-Research/TripoSR.git /tmp/TripoSR && \
+#    mv /tmp/TripoSR/tsr /usr/local/lib/python3.10/site-packages/tsr
 # RUN pip install --no-cache-dir --no-build-isolation "git+https://github.com/facebookresearch/sam2.git"
 RUN pip install --no-cache-dir --no-compile -c constraints.txt -r requirements.txt --extra-index-url https://download.pytorch.org/whl/cpu
 RUN mkdir -p /root/.cache/torch/hub/checkpoints && \
