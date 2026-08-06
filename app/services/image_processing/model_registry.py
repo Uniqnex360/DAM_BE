@@ -51,33 +51,33 @@ def get_iopaint() -> ModelManager:
                 # CHANGED FROM "sd2" to "lama"
                 _iopaint = ModelManager(name="lama", device="cpu")
     return _iopaint
-from transformers import AutoProcessor, AutoModelForCausalLM
-import torch
+# from transformers import AutoProcessor, AutoModelForCausalLM
+# import torch
 
-_florence_model = None
-_florence_processor = None
-_locks["florence"] = threading.Lock()
-def get_florence():
-    global _florence_model, _florence_processor
-    if _florence_model is None:
-        with _locks["florence"]:
-            if _florence_model is None:
-                try:
-                    logger.info("Loading Florence-2...")
-                    _florence_processor = AutoProcessor.from_pretrained(
-                        "microsoft/Florence-2-large",
-                        trust_remote_code=True,
-                    )
-                    _florence_model = AutoModelForCausalLM.from_pretrained(
-                        "microsoft/Florence-2-large",
-                        trust_remote_code=True,
-                        torch_dtype=torch.float32,
-                    ).eval()
-                    logger.info("Florence-2 ready.")
-                except Exception as e:
-                    logger.error(f"Failed to load Florence-2: {e}")
-                    return None
-    return _florence_model, _florence_processor
+# _florence_model = None
+# _florence_processor = None
+# _locks["florence"] = threading.Lock()
+# def get_florence():
+#     global _florence_model, _florence_processor
+#     if _florence_model is None:
+#         with _locks["florence"]:
+#             if _florence_model is None:
+#                 try:
+#                     logger.info("Loading Florence-2...")
+#                     _florence_processor = AutoProcessor.from_pretrained(
+#                         "microsoft/Florence-2-large",
+#                         trust_remote_code=True,
+#                     )
+#                     _florence_model = AutoModelForCausalLM.from_pretrained(
+#                         "microsoft/Florence-2-large",
+#                         trust_remote_code=True,
+#                         torch_dtype=torch.float32,
+#                     ).eval()
+#                     logger.info("Florence-2 ready.")
+#                 except Exception as e:
+#                     logger.error(f"Failed to load Florence-2: {e}")
+#                     return None
+#     return _florence_model, _florence_processor
 def get_remover() -> Remover:
     global _remover
     if _remover is None:
